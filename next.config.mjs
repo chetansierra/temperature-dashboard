@@ -6,7 +6,7 @@ const nextConfig = {
   },
   // Replit environment configuration
   experimental: {
-    allowMiddlewareResponseBody: true,
+    allowedDevOrigins: ['*.replit.dev', '*.repl.co', '*.pike.replit.dev'],
   },
   // Enable host checking bypass for Replit proxy
   async headers() {
