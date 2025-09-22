@@ -4,11 +4,27 @@ import React from 'react'
 import useSWR from 'swr'
 import KPITile from '@/components/ui/KPITile'
 import Chart from '@/components/ui/Chart'
+import { supabase } from '@/lib/supabase'
 
-// Fetcher function for SWR - includes credentials for authentication cookies
-const fetcher = (url: string) => fetch(url, {
-  credentials: 'include' // This sends cookies with the request
-}).then((res) => res.json())
+// Fetcher function for SWR with Authorization header
+const fetcher = async (url: string) => {
+  // Get the current session and access token
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  }
+  
+  // Add Authorization header if we have a session
+  if (session?.access_token) {
+    headers.Authorization = `Bearer ${session.access_token}`
+  }
+  
+  return fetch(url, {
+    credentials: 'include',
+    headers
+  }).then((res) => res.json())
+}
 
 export const OverviewContent: React.FC = () => {
   // Fetch overview data

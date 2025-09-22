@@ -20,14 +20,28 @@ export const createServerSupabaseClient = async () => {
         },
         set(name: string, value: string, options: any) {
           try {
-            cookieStore.set({ name, value, ...options })
+            cookieStore.set({ 
+              name, 
+              value, 
+              ...options,
+              httpOnly: true,
+              secure: true, // Secure in production
+              sameSite: 'lax'
+            })
           } catch (error) {
             // Ignore cookie setting errors in server components
           }
         },
         remove(name: string, options: any) {
           try {
-            cookieStore.set({ name, value: '', ...options })
+            cookieStore.set({ 
+              name, 
+              value: '', 
+              ...options,
+              httpOnly: true,
+              secure: true,
+              sameSite: 'lax'
+            })
           } catch (error) {
             // Ignore cookie removal errors in server components
           }

@@ -39,6 +39,7 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext 
     } else {
       // Use the standard server client for cookie-based auth
       console.log('Auth Debug - using cookie-based auth')
+      console.log('Auth Debug - cookies available:', request.headers.get('cookie') ? 'yes' : 'no')
       supabase = await createServerSupabaseClient()
     }
     
