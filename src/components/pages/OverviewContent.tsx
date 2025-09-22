@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import useSWR from 'swr'
 import KPITile from '@/components/ui/KPITile'
 import Chart from '@/components/ui/Chart'
@@ -27,11 +27,103 @@ const fetcher = async (url: string) => {
 }
 
 export const OverviewContent: React.FC = () => {
+  // State for chart data
+  const [chartData, setChartData] = useState<any[]>([])
+  const [chartLoading, setChartLoading] = useState(true)
+  const [chartError, setChartError] = useState<string | null>(null)
+
   // Fetch overview data
   const { data: overviewData, error, isLoading } = useSWR('/api/overview', fetcher, {
     refreshInterval: 30000, // Refresh every 30 seconds
     revalidateOnFocus: true
   })
+
+  // Fetch sensors for chart data
+  const { data: sensorsData } = useSWR('/api/sensors', fetcher)
+
+  // Fetch chart data when sensors are available
+  React.useEffect(() => {
+    if (sensorsData?.data && Array.isArray(sensorsData.data) && sensorsData.data.length > 0) {
+      fetchChartData(sensorsData.data.slice(0, 3)) // Show first 3 sensors
+    }
+  }, [sensorsData])
+
+  const fetchChartData = async (sensors: any[]) => {
+    if (!sensors || sensors.length === 0) {
+      setChartLoading(false)
+      return
+    }
+
+    try {
+      setChartLoading(true)
+      setChartError(null)
+
+      const endTime = new Date()
+      const startTime = new Date()
+      startTime.setHours(endTime.getHours() - 6) // Last 6 hours
+
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+      }
+
+      const response = await fetch('/api/chart/query', {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({
+          sensor_ids: sensors.map(s => s.id),
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          aggregation: 'hourly',
+          metrics: ['avg']
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Chart API error: ${response.status}`)
+      }
+
+      const chartResponse = await response.json()
+      
+      // Transform data for chart component
+      if (chartResponse.data && chartResponse.data.length > 0) {
+        const transformedData: any[] = []
+        const timeSlots = new Set<string>()
+        
+        // Collect all unique timestamps
+        chartResponse.data.forEach((sensor: any) => {
+          sensor.readings.forEach((reading: any) => {
+            timeSlots.add(reading.timestamp)
+          })
+        })
+        
+        // Create data points for each timestamp
+        Array.from(timeSlots).sort().forEach(timestamp => {
+          const dataPoint: any = { timestamp }
+          
+          chartResponse.data.forEach((sensor: any) => {
+            const reading = sensor.readings.find((r: any) => r.timestamp === timestamp)
+            dataPoint[sensor.sensor_name] = reading ? reading.avg_value || reading.value : null
+          })
+          
+          transformedData.push(dataPoint)
+        })
+        
+        setChartData(transformedData)
+      }
+    } catch (error) {
+      console.error('Failed to fetch chart data:', error)
+      setChartError(error instanceof Error ? error.message : 'Failed to load chart data')
+    } finally {
+      setChartLoading(false)
+    }
+  }
 
   // Debug logging
   React.useEffect(() => {
@@ -105,6 +197,43 @@ export const OverviewContent: React.FC = () => {
             (overviewData.stats?.critical_alerts || 0) > 0 ? 'critical' : 'healthy'
           }
         />
+      </div>
+
+      {/* Temperature Trends Chart */}
+      <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Temperature Trends (Last 6 Hours)</h2>
+        
+        {chartLoading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-2 text-gray-600">Loading chart data...</span>
+          </div>
+        ) : chartError ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="text-red-500 mb-2">⚠️ Chart Error</div>
+              <div className="text-sm text-gray-600">{chartError}</div>
+            </div>
+          </div>
+        ) : chartData && chartData.length > 0 ? (
+          <Chart
+            type="area"
+            data={chartData}
+            height={300}
+            color="#10367D"
+            showGrid={true}
+            showTooltip={true}
+            showLegend={true}
+            className="mt-4"
+          />
+        ) : (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="text-gray-400 mb-2">📊 No Chart Data</div>
+              <div className="text-sm text-gray-500">No temperature data available for charts</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Charts and Data */}
