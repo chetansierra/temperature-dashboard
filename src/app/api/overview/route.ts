@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { createClient } from '@supabase/supabase-js'
 import { getAuthContext, createAuthError } from '@/utils/auth'
 import { rateLimiters, addRateLimitHeaders, createRateLimitError } from '@/utils/rate-limit'
 
@@ -22,27 +21,8 @@ export async function GET(request: NextRequest) {
 
     const { profile } = authContext
 
-    // Use the same authenticated supabase client
-    const authHeader = request.headers.get('authorization')
-    let supabase
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      // Create client with the bearer token for API requests
-      supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          global: {
-            headers: {
-              Authorization: authHeader
-            }
-          }
-        }
-      )
-    } else {
-      // Use the standard server client for cookie-based auth
-      supabase = await createServerSupabaseClient()
-    }
+    // Use the unified server client for cookie-based auth
+    const supabase = await createServerSupabaseClient()
 
     // Get simple counts
     const sitesCount = await supabase.from('sites').select('id', { count: 'exact' })

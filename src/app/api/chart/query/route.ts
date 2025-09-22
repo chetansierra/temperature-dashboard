@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createServerSupabaseClient, supabaseAdmin } from '@/lib/supabase-server'
 import { ChartQueryRequestSchema, ChartQueryResponseSchema } from '@/utils/schemas'
 import { getAuthContext, createAuthError } from '@/utils/auth'
 import { rateLimiters, addRateLimitHeaders, createRateLimitError } from '@/utils/rate-limit'
@@ -22,6 +22,8 @@ export async function POST(request: NextRequest) {
 
     // Parse and validate request body
     const body = await request.json()
+    console.debug('Chart query - raw request body:', body)
+
     const validationResult = ChartQueryRequestSchema.safeParse(body)
     
     if (!validationResult.success) {
@@ -37,6 +39,13 @@ export async function POST(request: NextRequest) {
     }
 
     const { sensor_ids, start_time, end_time, aggregation = 'raw', metrics = ['avg'] } = validationResult.data
+    console.debug('Chart query - validated request:', {
+      sensor_ids,
+      start_time,
+      end_time,
+      aggregation,
+      metrics
+    })
     const supabase = await createServerSupabaseClient()
 
     // Validate time range (max 30 days for raw data)
@@ -60,13 +69,14 @@ export async function POST(request: NextRequest) {
       .from('sensors')
       .select(`
         id,
-        sensor_id_local,
-        sites!inner(site_name),
+        name,
+        sites!inner(name),
         environments!inner(name)
       `)
       .in('id', sensor_ids)
 
     if (sensorsError || !sensors || sensors.length !== sensor_ids.length) {
+      console.error('Chart query - sensor lookup failed:', { sensorsError, sensorsLength: sensors?.length, requested: sensor_ids.length })
       const response = NextResponse.json({
         error: {
           code: 'SENSORS_NOT_FOUND',
@@ -85,23 +95,23 @@ export async function POST(request: NextRequest) {
     switch (aggregation) {
       case 'hourly':
         tableName = 'readings_hourly'
-        timeColumn = 'bucket'
-        selectColumns = 'bucket as ts, sensor_id, avg_value as value, min_value, max_value, reading_count'
+        timeColumn = 'hour_bucket'
+        selectColumns = 'sensor_id, ts:hour_bucket, value:avg_temp, min_value:min_temp, max_value:max_temp, reading_count'
         break
       case 'daily':
         tableName = 'readings_daily'
-        timeColumn = 'bucket'
-        selectColumns = 'bucket as ts, sensor_id, avg_value as value, min_value, max_value, reading_count'
+        timeColumn = 'day_bucket'
+        selectColumns = 'sensor_id, ts:day_bucket, value:avg_temp, min_value:min_temp, max_value:max_temp, reading_count'
         break
       default: // raw
         tableName = 'readings'
         timeColumn = 'ts'
-        selectColumns = 'ts, sensor_id, value'
+        selectColumns = 'sensor_id, ts, value:temperature_c'
         break
     }
 
     // Query readings data
-    const { data: readingsData, error: readingsError } = await supabase
+    const { data: readingsData, error: readingsError } = await supabaseAdmin
       .from(tableName)
       .select(selectColumns)
       .in('sensor_id', sensor_ids)
@@ -111,6 +121,7 @@ export async function POST(request: NextRequest) {
       .limit(5000) // Enforce max 5000 points
 
     if (readingsError) {
+      console.error('Chart query - readings fetch failed:', readingsError)
       const response = NextResponse.json({
         error: {
           code: 'READINGS_FETCH_FAILED',
@@ -121,23 +132,34 @@ export async function POST(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
+    console.debug('Chart query - raw readings sample:', readingsData?.slice(0, 3))
+
     // Group readings by sensor
     const sensorReadings = new Map<string, any[]>()
     sensor_ids.forEach(sensorId => {
       sensorReadings.set(sensorId, [])
     })
 
+    const normaliseTimestamp = (value: string) => {
+      try {
+        return new Date(value).toISOString()
+      } catch (err) {
+        console.warn('Chart query - failed to normalise timestamp, using original value', value)
+        return value
+      }
+    }
+
     readingsData?.forEach((reading: any) => {
       const sensorData = sensorReadings.get(reading.sensor_id)
       if (sensorData) {
         const readingData: any = {
-          timestamp: reading.ts,
+          timestamp: normaliseTimestamp(reading.ts),
           value: reading.value
         }
 
         // Add aggregated values if available
         if (aggregation !== 'raw') {
-          if (reading.avg_value !== undefined) readingData.avg_value = reading.avg_value
+          if (reading.value !== undefined) readingData.avg_value = reading.value
           if (reading.min_value !== undefined) readingData.min_value = reading.min_value
           if (reading.max_value !== undefined) readingData.max_value = reading.max_value
         }
@@ -149,9 +171,23 @@ export async function POST(request: NextRequest) {
     // Build response data
     const data = sensors.map(sensor => ({
       sensor_id: sensor.id,
-      sensor_name: sensor.sensor_id_local || `Sensor ${sensor.id.slice(-8)}`,
+      sensor_name: sensor.name || `Sensor ${sensor.id.slice(-8)}`,
       readings: sensorReadings.get(sensor.id) || []
     }))
+
+    console.debug('Chart query - response payload preview:', {
+      sensors: data.map(item => ({
+        sensor_id: item.sensor_id,
+        sensor_name: item.sensor_name,
+        readings_count: item.readings.length
+      })),
+      metadata: {
+        total_points: readingsData?.length || 0,
+        aggregation,
+        start_time,
+        end_time
+      }
+    })
 
     // Check if data was downsampled
     const totalPoints = readingsData?.length || 0
@@ -171,9 +207,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate response against schema
-    const validatedResponse = ChartQueryResponseSchema.parse(responseData)
-    
-    const response = NextResponse.json(validatedResponse)
+    const validatedResponse = ChartQueryResponseSchema.safeParse(responseData)
+
+    if (!validatedResponse.success) {
+      console.error('Chart query - response validation failed:', validatedResponse.error.flatten())
+      const response = NextResponse.json({
+        error: {
+          code: 'RESPONSE_VALIDATION_FAILED',
+          message: 'Chart response failed validation',
+          details: validatedResponse.error.issues,
+          requestId: crypto.randomUUID()
+        }
+      }, { status: 500 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
+
+    const response = NextResponse.json(validatedResponse.data)
     return addRateLimitHeaders(response, rateLimitResult)
 
   } catch (error) {

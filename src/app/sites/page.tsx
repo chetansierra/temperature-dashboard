@@ -14,12 +14,14 @@ const fetcher = (url: string) => fetch(url, {
 
 interface Site {
   id: string
-  name: string
+  site_name: string
+  site_code: string
   location: string
   timezone: string
-  environments_count: number
-  sensors_count: number
-  active_alerts_count: number
+  environment_count: number
+  sensor_count: number
+  active_alerts: number
+  health_status: 'healthy' | 'warning' | 'critical'
   created_at: string
   updated_at: string
 }
@@ -44,7 +46,7 @@ export default function SitesPage() {
 
   const sites: Site[] = sitesData?.sites || []
   const filteredSites = sites.filter(site => 
-    site.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    site.site_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     site.location.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
@@ -190,13 +192,13 @@ export default function SitesPage() {
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600">
-                    {sites.reduce((sum, site) => sum + (site.environments_count || 0), 0)}
+                    {sites.reduce((sum, site) => sum + (site.environment_count || 0), 0)}
                   </div>
                   <div className="text-sm text-gray-600">Total Environments</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-purple-600">
-                    {sites.reduce((sum, site) => sum + (site.sensors_count || 0), 0)}
+                    {sites.reduce((sum, site) => sum + (site.sensor_count || 0), 0)}
                   </div>
                   <div className="text-sm text-gray-600">Total Sensors</div>
                 </div>
@@ -238,28 +240,28 @@ const SiteCard: React.FC<SiteCardProps> = ({ site, userRole, onUpdate }) => {
     <div className="bg-white rounded-lg shadow border border-gray-200 p-6 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">{site.name}</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">{site.site_name}</h3>
           <p className="text-sm text-gray-600 flex items-center">
             <span className="mr-1">📍</span>
             {site.location}
           </p>
         </div>
-        {site.active_alerts_count > 0 && (
+        {site.active_alerts > 0 && (
           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-            getAlertStatus(site.active_alerts_count)
+            getAlertStatus(site.active_alerts)
           }`}>
-            🚨 {site.active_alerts_count}
+            🚨 {site.active_alerts}
           </span>
         )}
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div className="text-center">
-          <div className="text-lg font-semibold text-blue-600">{site.environments_count || 0}</div>
+          <div className="text-lg font-semibold text-blue-600">{site.environment_count || 0}</div>
           <div className="text-xs text-gray-500">Environments</div>
         </div>
         <div className="text-center">
-          <div className="text-lg font-semibold text-green-600">{site.sensors_count || 0}</div>
+          <div className="text-lg font-semibold text-green-600">{site.sensor_count || 0}</div>
           <div className="text-xs text-gray-500">Sensors</div>
         </div>
         <div className="text-center">

@@ -6,6 +6,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
+// Server-side Supabase client for API routes with proper cookie handling
 export const createServerSupabaseClient = async () => {
   const cookieStore = await cookies()
   
@@ -29,6 +30,7 @@ export const createServerSupabaseClient = async () => {
               path: '/'
             })
           } catch (error) {
+            // This can happen in middleware or other contexts where cookies can't be set
             console.warn('Failed to set cookie:', error)
           }
         },
@@ -53,6 +55,7 @@ export const createServerSupabaseClient = async () => {
   )
 }
 
+// Service role client for server-side operations (bypasses RLS)
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
     autoRefreshToken: false,

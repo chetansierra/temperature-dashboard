@@ -3,13 +3,17 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Client-side Supabase client with SSR cookie configuration
+// Client-side Supabase client with proper session management
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    flowType: 'pkce'
+    flowType: 'pkce',
+    // Use localStorage for session persistence on client-side
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    // Cookie configuration for SSR
+    storageKey: 'supabase.auth.token'
   }
 })
 

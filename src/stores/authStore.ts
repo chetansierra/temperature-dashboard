@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase-client'
 import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js'
 
 export interface UserProfile {
@@ -35,9 +35,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initialize: async () => {
     try {
-      // supabase is already imported as the client instance
-      
-      // Get initial session
+      // Get initial session from cookies/localStorage
       const { data: { session }, error } = await supabase.auth.getSession()
       
       if (error) {
@@ -96,8 +94,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         })
       }
 
-      // Listen for auth changes
+      // Listen for auth changes and sync with cookies
       supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
+        console.log('Auth state change:', event, session?.user?.id)
+        
         if (event === 'SIGNED_IN' && session?.user) {
           // Fetch user profile
           const { data: profile, error: profileError } = await supabase
@@ -122,6 +122,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }
         } else if (event === 'SIGNED_OUT') {
           set({ user: null, profile: null, isLoading: false })
+        } else if (event === 'TOKEN_REFRESHED' && session) {
+          // Session refreshed - maintain current state but log it
+          console.log('Token refreshed for user:', session.user?.id)
         }
       })
 
@@ -135,8 +138,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true })
     
     try {
-      // supabase is already imported as the client instance
-      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -147,8 +148,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return { error: error.message }
       }
 
-      if (data.user) {
+      if (data.user && data.session) {
         // Profile will be fetched by the auth state change listener
+        console.log('Sign in successful, session established')
         return {}
       }
 
@@ -174,8 +176,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!user) return
 
     try {
-      // supabase is already imported as the client instance
-      
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('*')

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { getAuthContext } from '@/utils/auth'
 import { rateLimiters, addRateLimitHeaders, createRateLimitError } from '@/utils/rate-limit'
 
 export async function GET(request: NextRequest) {
@@ -12,12 +13,9 @@ export async function GET(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    const supabase = await createServerSupabaseClient()
-    
-    // Get user session
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-    
-    if (sessionError || !session) {
+    // Get authenticated user context
+    const authContext = await getAuthContext(request)
+    if (!authContext) {
       const response = NextResponse.json(
         { error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
         { status: 401 }
@@ -25,20 +23,8 @@ export async function GET(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Get user profile to check tenant access
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .single()
-
-    if (profileError || !profile) {
-      const response = NextResponse.json(
-        { error: { code: 'PROFILE_NOT_FOUND', message: 'User profile not found' } },
-        { status: 404 }
-      )
-      return addRateLimitHeaders(response, rateLimitResult)
-    }
+    const { profile } = authContext
+    const supabase = await createServerSupabaseClient()
 
     // Build the query based on user role and tenant access
     let sensorsQuery = supabase
@@ -268,8 +254,8 @@ export async function GET(request: NextRequest) {
     })
 
     // Sort by status priority (offline first, then warnings, then online)
-    const statusPriority = { 'offline': 0, 'warning': 1, 'online': 2 }
-    sensorsWithStats.sort((a, b) => {
+    const statusPriority: Record<string, number> = { 'offline': 0, 'warning': 1, 'online': 2 }
+    sensorsWithStats.sort((a: any, b: any) => {
       return statusPriority[a.status] - statusPriority[b.status]
     })
 
@@ -279,11 +265,11 @@ export async function GET(request: NextRequest) {
       total: sensorsWithStats.length,
       stats: {
         total: sensorsWithStats.length,
-        online: sensorsWithStats.filter(s => s.status === 'online').length,
-        warning: sensorsWithStats.filter(s => s.status === 'warning').length,
-        offline: sensorsWithStats.filter(s => s.status === 'offline').length,
-        inactive: sensorsWithStats.filter(s => !s.is_active).length,
-        active_alerts: sensorsWithStats.reduce((sum, s) => sum + s.alert_count, 0)
+        online: sensorsWithStats.filter((s: any) => s.status === 'online').length,
+        warning: sensorsWithStats.filter((s: any) => s.status === 'warning').length,
+        offline: sensorsWithStats.filter((s: any) => s.status === 'offline').length,
+        inactive: sensorsWithStats.filter((s: any) => !s.is_active).length,
+        active_alerts: sensorsWithStats.reduce((sum: any, s: any) => sum + s.alert_count, 0)
       },
       timestamp: new Date().toISOString()
     })
@@ -296,6 +282,8 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
     // rateLimitResult is now available from outer scope
-    return addRateLimitHeaders(response, rateLimitResult)
+    return rateLimitResult 
+      ? addRateLimitHeaders(response, rateLimitResult)
+      : response
   }
 }

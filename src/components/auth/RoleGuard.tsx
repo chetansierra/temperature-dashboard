@@ -98,8 +98,8 @@ const RoleGuard: React.FC<RoleGuardProps> = ({
   }
 
   // Check if auditor access has expired
-  if (profile.role === 'auditor' && profile.access_expires_at) {
-    const expiryDate = new Date(profile.access_expires_at)
+  if (profile.role === 'auditor' && profile.auditor_expires_at) {
+    const expiryDate = new Date(profile.auditor_expires_at)
     const now = new Date()
     
     if (expiryDate < now) {

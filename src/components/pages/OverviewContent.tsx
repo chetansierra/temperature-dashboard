@@ -43,8 +43,19 @@ export const OverviewContent: React.FC = () => {
 
   // Fetch chart data when sensors are available
   React.useEffect(() => {
-    if (sensorsData?.data && Array.isArray(sensorsData.data) && sensorsData.data.length > 0) {
-      fetchChartData(sensorsData.data.slice(0, 3)) // Show first 3 sensors
+    const availableSensors = Array.isArray(sensorsData?.sensors)
+      ? sensorsData.sensors
+      : Array.isArray(sensorsData?.data)
+        ? sensorsData.data
+        : []
+
+    console.debug('OverviewContent - Sensors response processed:', {
+      raw: sensorsData,
+      extractedCount: availableSensors.length
+    })
+
+    if (availableSensors.length > 0) {
+      fetchChartData(availableSensors.slice(0, 3)) // Show first 3 sensors
     }
   }, [sensorsData])
 
@@ -64,26 +75,29 @@ export const OverviewContent: React.FC = () => {
 
       // Get fresh session and validate token
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      
-      if (sessionError || !session?.access_token) {
-        console.error('Session error:', sessionError)
-        setChartError('Authentication failed - please login again')
-        setChartLoading(false)
-        return
+
+      if (sessionError) {
+        console.warn('OverviewContent - Session retrieval error:', sessionError)
       }
 
-      // Validate JWT token format
-      const tokenParts = session.access_token.split('.')
-      if (tokenParts.length !== 3) {
-        console.error('Invalid JWT token format')
-        setChartError('Invalid authentication token - please login again')
-        setChartLoading(false)
-        return
+      let accessToken: string | null = null
+      if (session?.access_token) {
+        const tokenParts = session.access_token.split('.')
+        if (tokenParts.length === 3) {
+          accessToken = session.access_token
+        } else {
+          console.warn('OverviewContent - Ignoring malformed access token')
+        }
+      } else {
+        console.debug('OverviewContent - No access token available, relying on cookies for auth')
       }
-      
+
       const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`
+        'Content-Type': 'application/json'
+      }
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`
       }
 
       const response = await fetch('/api/chart/query', {
@@ -104,6 +118,7 @@ export const OverviewContent: React.FC = () => {
       }
 
       const chartResponse = await response.json()
+      console.debug('OverviewContent - Chart API response:', chartResponse)
       
       // Transform data for chart component
       if (chartResponse.data && chartResponse.data.length > 0) {
@@ -125,15 +140,21 @@ export const OverviewContent: React.FC = () => {
             const reading = sensor.readings.find((r: any) => r.timestamp === timestamp)
             dataPoint[sensor.sensor_name] = reading ? reading.avg_value || reading.value : null
           })
-          
-          transformedData.push(dataPoint)
+        
+        transformedData.push(dataPoint)
         })
         
+        console.debug('OverviewContent - Transformed chart data:', transformedData)
         setChartData(transformedData)
+      } else {
+        console.debug('OverviewContent - Chart API returned no data')
+        setChartData([])
       }
     } catch (error) {
       console.error('Failed to fetch chart data:', error)
       setChartError(error instanceof Error ? error.message : 'Failed to load chart data')
+      console.debug('OverviewContent - Chart fetch error details:', error)
+      setChartData([])
     } finally {
       setChartLoading(false)
     }

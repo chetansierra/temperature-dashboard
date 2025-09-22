@@ -18,7 +18,7 @@ import {
 
 export interface ChartDataPoint {
   timestamp: string
-  value: number
+  value?: number | null
   [key: string]: any
 }
 
@@ -36,6 +36,7 @@ export interface ChartProps {
   className?: string
   loading?: boolean
   error?: string
+  seriesKeys?: string[]
 }
 
 const Chart: React.FC<ChartProps> = ({
@@ -51,7 +52,8 @@ const Chart: React.FC<ChartProps> = ({
   showLegend = false,
   className = '',
   loading = false,
-  error
+  error,
+  seriesKeys
 }) => {
   // Loading state
   if (loading) {
@@ -125,6 +127,58 @@ const Chart: React.FC<ChartProps> = ({
     margin: { top: 5, right: 30, left: 20, bottom: 5 }
   }
 
+  const seriesToRender = React.useMemo(() => {
+    if (!data || data.length === 0) return [] as string[]
+    if (seriesKeys && seriesKeys.length > 0) return seriesKeys
+
+    const keys = Array.from(
+      new Set(
+        data.flatMap(point => Object.keys(point ?? {}))
+      )
+    ).filter(key => key !== xAxisKey)
+
+    if (yAxisKey && keys.includes(yAxisKey)) {
+      return [yAxisKey]
+    }
+
+    return keys
+  }, [data, seriesKeys, xAxisKey, yAxisKey])
+
+  // No renderable series -> treat as empty data
+  if (seriesToRender.length === 0) {
+    return (
+      <div className={`flex items-center justify-center ${className}`} style={{ height }}>
+        <div className="text-center">
+          <div className="text-gray-400 mb-2">📊 No Data</div>
+          <div className="text-sm text-gray-500">No chart data available</div>
+        </div>
+      </div>
+    )
+  }
+
+  const palette = React.useMemo(() => {
+    const basePalette = [
+      '#2563eb', // blue-600
+      '#16a34a', // green-600
+      '#f97316', // orange-500
+      '#9333ea', // purple-600
+      '#ef4444', // red-500
+      '#0ea5e9', // sky-500
+      '#14b8a6', // teal-500
+      '#facc15', // yellow-400
+      '#a855f7', // violet-500
+      '#22d3ee'  // cyan-400
+    ]
+
+    if (seriesToRender.length <= 1) {
+      return [color]
+    }
+
+    // Ensure we always include provided color as first entry for consistency
+    const paletteWithPrimary = [color, ...basePalette.filter(p => p !== color)]
+    return seriesToRender.map((_, index) => paletteWithPrimary[index % paletteWithPrimary.length])
+  }, [seriesToRender, color])
+
   const renderChart = () => {
     switch (type) {
       case 'area':
@@ -144,15 +198,19 @@ const Chart: React.FC<ChartProps> = ({
             />
             {showTooltip && <Tooltip content={<CustomTooltip />} />}
             {showLegend && <Legend />}
-            <Area
-              type="monotone"
-              dataKey={yAxisKey}
-              stroke={color}
-              fill={color}
-              fillOpacity={0.3}
-              strokeWidth={2}
-              name="Temperature"
-            />
+            {seriesToRender.map((seriesKey, index) => (
+              <Area
+                key={seriesKey}
+                type="monotone"
+                dataKey={seriesKey}
+                stroke={palette[index % palette.length]}
+                fill={palette[index % palette.length]}
+                fillOpacity={0.25}
+                strokeWidth={2}
+                name={seriesKey}
+                connectNulls
+              />
+            ))}
           </AreaChart>
         )
 
@@ -173,11 +231,14 @@ const Chart: React.FC<ChartProps> = ({
             />
             {showTooltip && <Tooltip content={<CustomTooltip />} />}
             {showLegend && <Legend />}
-            <Bar
-              dataKey={yAxisKey}
-              fill={color}
-              name="Temperature"
-            />
+            {seriesToRender.map((seriesKey, index) => (
+              <Bar
+                key={seriesKey}
+                dataKey={seriesKey}
+                fill={palette[index % palette.length]}
+                name={seriesKey}
+              />
+            ))}
           </BarChart>
         )
 
@@ -198,15 +259,22 @@ const Chart: React.FC<ChartProps> = ({
             />
             {showTooltip && <Tooltip content={<CustomTooltip />} />}
             {showLegend && <Legend />}
-            <Line
-              type="monotone"
-              dataKey={yAxisKey}
-              stroke={color}
-              strokeWidth={2}
-              dot={{ fill: color, strokeWidth: 2, r: 4 }}
-              activeDot={{ r: 6, stroke: color, strokeWidth: 2 }}
-              name="Temperature"
-            />
+            {seriesToRender.map((seriesKey, index) => {
+              const seriesColor = palette[index % palette.length]
+              return (
+                <Line
+                  key={seriesKey}
+                  type="monotone"
+                  dataKey={seriesKey}
+                  stroke={seriesColor}
+                  strokeWidth={2}
+                  dot={{ fill: seriesColor, strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, stroke: seriesColor, strokeWidth: 2 }}
+                  name={seriesKey}
+                  connectNulls
+                />
+              )
+            })}
           </LineChart>
         )
     }
