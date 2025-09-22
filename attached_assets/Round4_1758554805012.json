@@ -1,0 +1,163 @@
+Round 4 — Human-Friendly Verbose Summary (Error Handling, Caching, Fallbacks, Rate Limits, UX Safeguards)
+
+Error Handling
+
+System-level: Each page has an error boundary. If an error occurs, show a fallback screen with:
+“Something went wrong. Please retry.” and a log ID for support.
+
+API-level: All endpoints return errors in a structured format:
+
+{ "error": { "code": "ERR_CODE", "message": "description", "requestId": "uuid" } }
+
+
+UI-level:
+
+Minor/transient issues → toast/snackbar.
+
+Blocking issues → modal.
+
+Includes log ID reference for debugging.
+
+Offline / Retry Support
+
+Skipped for v1. No IndexedDB caching or offline retries.
+
+Only retry is SWR’s built-in auto-retry for GETs.
+
+Caching & ISR
+
+Static ISR: Marketing pages, login splash.
+
+Dynamic SSR: Dashboard pages (overview, sites, alerts, sensors, charts).
+
+Client caching: SWR with localStorage fallback for filters.
+
+API GET responses: Cacheable for 30–60 seconds with headers.
+
+Downsampling enforced on chart queries to max 5000 points.
+
+Rate Limiting
+
+Per-user:
+
+60 GET/minute.
+
+20 POST/minute.
+
+10 chart queries/minute.
+
+Tenant-wide cap optional for later scale.
+
+Implemented with request metadata logging + Redis/Supabase functions if needed later.
+
+Fallbacks for Heavy Charts
+
+If request is too large:
+
+Show: “Data too large to display, please narrow selection.”
+
+Suggest switching to aggregates.
+
+Server downsampling at 5000 points → UI banner: “Data downsampled for performance.”
+
+Alert Delivery
+
+Email: Fire-and-forget via SendGrid.
+
+In-app notification center: Alerts always appear in dashboard regardless of email status.
+
+Auth & Session Failures
+
+Expired/invalid JWT → redirect to login page with message “Session expired”.
+
+No return-to URL, no impersonation, no audit logs for now.
+
+Additional Safeguards
+
+Notification Center: Alerts always visible inside app even if external delivery fails.
+
+Log IDs in error boundaries: Minimal effort, helpful for debugging.
+
+Health Check Endpoint: /api/health returns DB + auth status for monitoring.
+
+{
+  "round": 4,
+  "section": "Error Handling, Caching, Rate Limits, UX Safeguards",
+  "error_handling": {
+    "system_level": {
+      "error_boundaries": "per_page",
+      "fallback_message": "Something went wrong. Please retry.",
+      "log_id": "uuid attached for debugging"
+    },
+    "api_level": {
+      "error_response_format": {
+        "error": {
+          "code": "ERR_CODE",
+          "message": "description",
+          "requestId": "uuid"
+        }
+      }
+    },
+    "ui_level": {
+      "minor_issues": "toast_snackbar",
+      "blocking_issues": "modal",
+      "include_log_id": true
+    }
+  },
+  "offline_support": {
+    "mode": "skipped_for_v1",
+    "retries": "only_swr_builtin"
+  },
+  "caching_and_isr": {
+    "static_isr": ["marketing_pages", "login"],
+    "dynamic_ssr": ["dashboard_pages", "overview", "sites", "alerts", "sensors", "charts"],
+    "client_cache": "swr_with_localstorage_fallback",
+    "api_get_cache_headers": "30-60_seconds",
+    "chart_downsampling": {
+      "max_points": 5000,
+      "banner_message": "Data downsampled for performance"
+    }
+  },
+  "rate_limiting": {
+    "scope": "per_user",
+    "limits": {
+      "get": "60 per minute",
+      "post": "20 per minute",
+      "chart_queries": "10 per minute"
+    },
+    "tenant_wide_cap": "optional_future"
+  },
+  "fallbacks_for_heavy_charts": {
+    "too_large_message": "Data too large to display, please narrow selection.",
+    "suggestion": "Switch to hourly/daily aggregates.",
+    "server_downsampling": {
+      "max_points": 5000,
+      "ui_banner": "Data downsampled for performance."
+    }
+  },
+  "alerts_delivery": {
+    "email": {
+      "mode": "fire_and_forget",
+      "provider": "sendgrid"
+    },
+    "in_app_notifications": true
+  },
+  "auth_session_failures": {
+    "expired_invalid_jwt": "redirect_to_login",
+    "message": "Session expired",
+    "return_to_url": false,
+    "audit_logging": false
+  },
+  "additional_safeguards": {
+    "notification_center": "always_show_alerts_in_ui",
+    "log_ids": "included_in_error_boundaries",
+    "health_check_endpoint": {
+      "path": "/api/health",
+      "response": {
+        "db_status": "ok|error",
+        "auth_status": "ok|error",
+        "timestamp": "utc_now"
+      }
+    }
+  }
+}

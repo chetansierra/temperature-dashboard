@@ -1,0 +1,400 @@
+Human-friendly Summary
+
+Tenancy & Hierarchy:
+
+Each organisation has a master ID (can add other masters).
+
+Organisations can have multiple sites.
+
+Each site has a site manager login (only sees their site).
+
+Sites contain environments (cold storage, blast freezer, chiller, etc.).
+
+Environments contain multiple sensors.
+
+Master sees all sites, auditor has read-only time-bound access (can span orgs), admin has global access.
+
+Sensors:
+
+Each has a global unique ID.
+
+Optional fields: local ID, installation date, thresholds, physical location.
+
+Must define the property measured (e.g., temperature).
+
+Data Retention:
+
+Raw sensor readings → stored for 180 days.
+
+Aggregated data (hourly, daily) → stored forever.
+
+Export policy: last 90 days raw data exportable in CSV/Parquet.
+
+Alerts:
+
+Configurable at organisation, site, environment, or sensor level.
+
+Site managers & masters can set thresholds.
+
+Notifications: UI (map turns red, banner), email.
+
+If not acknowledged in 15 min → escalate to master (configurable per site).
+
+Lifecycle tracked: opened → acknowledged → resolved (with timestamps & users).
+
+Auth:
+
+Supabase Auth (email/password, magic link/OTP).
+
+Enterprise SSO can be added later if required.
+
+Access Control:
+
+Site Manager: site-only view, manage site alerts.
+
+Master: full org view, manage thresholds, invite auditors.
+
+Auditor: read-only, time-bound.
+
+Admin: platform-wide, audited.
+
+Data Model:
+
+Core entities: tenants → sites → environments → sensors → readings → thresholds → alerts.
+
+Row-level security ensures proper scoping.
+
+
+
+{
+  "round": 1,
+  "section": "Tenancy, Roles, Sensors, Auth, Alerts, Data retention",
+  "tenancy_model": {
+    "organisation": {
+      "id": "UUID",
+      "name": "Acme Foods Ltd.",
+      "master_users": [
+        {
+          "id": "UUID",
+          "email": "ops-head@acme.com",
+          "permissions": [
+            "view_all_sites",
+            "manage_sites",
+            "configure_org_alerts",
+            "add_master_user",
+            "invite_auditor"
+          ]
+        }
+      ],
+      "sites": [
+        {
+          "site_id": "UUID",
+          "tenant_id": "UUID (organisation id)",
+          "site_name": "Mumbai Warehouse",
+          "site_code": "ACME-MUM-01",
+          "site_manager": {
+            "id": "UUID",
+            "email": "manager.mumbai@acme.com",
+            "permissions": [
+              "view_site",
+              "configure_site_alerts",
+              "acknowledge_alerts",
+              "export_site_data"
+            ]
+          },
+          "environments": [
+            {
+              "environment_id": "UUID",
+              "environment_type": "Cold storage",
+              "name": "Cold Store A",
+              "description": "Large cold storage unit for frozen foods",
+              "sensors": [
+                {
+                  "sensor_id_global": "UUID (system-wide unique)",
+                  "sensor_id_local": "MUM-A-001",
+                  "property_measured": "temperature_c",
+                  "installation_date": "2025-01-01",
+                  "thresholds": {
+                    "min_c": -20,
+                    "max_c": -10
+                  },
+                  "location_details": "Aisle 3, middle rack",
+                  "status": "active"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "roles": {
+    "master": {
+      "description": "Organisation-level superuser",
+      "capabilities": [
+        "Access to all sites within organisation",
+        "Manage site managers and masters",
+        "Configure alerts at organisation, site, environment, or sensor level",
+        "Invite and time-bound auditors",
+        "View consolidated analytics and exports"
+      ]
+    },
+    "site_manager": {
+      "description": "Site-level role",
+      "capabilities": [
+        "Access only to their site’s data",
+        "Configure alerts for site environments/sensors",
+        "Acknowledge/resolve alerts",
+        "Export site-level datasets"
+      ]
+    },
+    "auditor": {
+      "description": "Read-only user authorised by master; time-bound; may span multiple organisations",
+      "capabilities": [
+        "Read-only dashboards and exports",
+        "Access limited by expiry date",
+        "No alert configuration or acknowledgement"
+      ]
+    },
+    "admin": {
+      "description": "Platform-wide superuser (internal)",
+      "capabilities": [
+        "Global access across tenants",
+        "Manage infrastructure, billing, compliance",
+        "Override access for support and incident response (auditable)"
+      ]
+    }
+  },
+  "auth": {
+    "provider": "Supabase Auth",
+    "methods": [
+      "email_password",
+      "magic_link_otp"
+    ],
+    "notes": "SSO (SAML/OIDC) can be added later if enterprise requires it"
+  },
+  "data_model": {
+    "entities": {
+      "tenants": {
+        "fields": [
+          "id (UUID)",
+          "name (text)",
+          "created_at (timestamptz)"
+        ]
+      },
+      "sites": {
+        "fields": [
+          "id (UUID)",
+          "tenant_id (UUID → tenants.id)",
+          "site_name (text)",
+          "site_code (text)",
+          "location (jsonb optional)",
+          "created_at (timestamptz)"
+        ]
+      },
+      "environments": {
+        "fields": [
+          "id (UUID)",
+          "site_id (UUID → sites.id)",
+          "environment_type (enum: cold_storage|blast_freezer|chiller|other)",
+          "name (text)",
+          "description (text)",
+          "created_at (timestamptz)"
+        ]
+      },
+      "sensors": {
+        "fields": [
+          "id (UUID) // sensor_id_global",
+          "tenant_id (UUID)",
+          "site_id (UUID)",
+          "environment_id (UUID)",
+          "sensor_id_local (text optional)",
+          "property_measured (text; e.g., temperature_c)",
+          "installation_date (date optional)",
+          "status (enum: active|maintenance|decommissioned)"
+        ]
+      },
+      "thresholds": {
+        "scope": "can be defined at organisation, site, environment, or sensor level; most specific wins",
+        "fields": [
+          "id (UUID)",
+          "level (enum: org|site|environment|sensor)",
+          "level_ref_id (UUID)",
+          "min_c (numeric)",
+          "max_c (numeric)",
+          "created_by (UUID user id)",
+          "created_at (timestamptz)"
+        ]
+      },
+      "readings": {
+        "notes": "Timeseries table (TimescaleDB hypertable) storing raw sensor values",
+        "fields": [
+          "ts (timestamptz)",
+          "sensor_id (UUID → sensors.id)",
+          "value (numeric)"
+        ],
+        "primary_key": [
+          "sensor_id",
+          "ts"
+        ]
+      },
+      "aggregates": {
+        "notes": "Continuous aggregates (hourly, daily) for performance",
+        "views": [
+          "readings_hourly(bucket, sensor_id, avg_value, min_value, max_value)",
+          "readings_daily(bucket, sensor_id, avg_value, min_value, max_value)"
+        ]
+      },
+      "alert_rules": {
+        "fields": [
+          "id (UUID)",
+          "tenant_id (UUID)",
+          "scope_level (enum: environment|sensor)",
+          "scope_ids (array of UUIDs)",
+          "min_c (numeric optional)",
+          "max_c (numeric optional)",
+          "breach_window_minutes (int)",
+          "rate_of_change_c_per_5min (numeric optional)",
+          "notification_channels (jsonb)",
+          "escalation_minutes (int)",
+          "enabled (bool)"
+        ]
+      },
+      "alerts": {
+        "fields": [
+          "id (UUID)",
+          "rule_id (UUID → alert_rules.id)",
+          "site_id (UUID)",
+          "environment_id (UUID optional)",
+          "sensor_id (UUID optional)",
+          "status (enum: open|acknowledged|resolved)",
+          "opened_at (timestamptz)",
+          "acknowledged_at (timestamptz optional)",
+          "resolved_at (timestamptz optional)",
+          "acknowledged_by (UUID user id optional)",
+          "resolved_by (UUID user id optional)"
+        ]
+      }
+    },
+    "rls": {
+      "principle": "Row-Level Security by tenant_id; site managers restricted to their site; masters access all sites in their tenant; auditors time-bound read-only; admins unrestricted (audited)."
+    }
+  },
+  "data_retention": {
+    "raw_data": {
+      "duration_days": 180,
+      "description": "All raw sensor readings kept for ~6 months"
+    },
+    "aggregates": {
+      "duration": "forever",
+      "resolutions": [
+        "hourly",
+        "daily"
+      ],
+      "description": "Pre-aggregated time buckets stored indefinitely with compression"
+    },
+    "export_policy": {
+      "raw_export_window_days": 90,
+      "formats": [
+        "csv",
+        "parquet"
+      ]
+    }
+  },
+  "alerts": {
+    "config_levels": [
+      "organisation",
+      "site",
+      "environment",
+      "sensor"
+    ],
+    "settable_by": [
+      "master",
+      "site_manager"
+    ],
+    "group_rules": "Multiple sensors can be grouped under one rule at the environment level.",
+    "breach_detection": {
+      "default_rule": "value outside [min_c, max_c] for >= breach_window_minutes",
+      "default_breach_window_minutes": 10,
+      "optional_rate_of_change_rule": "delta > 3°C within 5 minutes"
+    },
+    "notifications": [
+      {
+        "type": "ui",
+        "example": "Map dot turns red + banner on dashboard"
+      },
+      {
+        "type": "email",
+        "example": "Send alert to site manager"
+      }
+    ],
+    "escalation": {
+      "default_minutes": 15,
+      "configurable_per_site": true,
+      "target": "master",
+      "notes": "If not acknowledged by site manager within window, escalate to master. Master can override window per site."
+    },
+    "auditing": {
+      "alert_lifecycle_events": [
+        "opened",
+        "acknowledged",
+        "resolved"
+      ],
+      "who_when": "Track user and timestamp on each transition"
+    }
+  },
+  "authz_matrix_examples": [
+    {
+      "actor": "site_manager",
+      "resource": "readings (their site only)",
+      "actions": [
+        "read",
+        "export"
+      ]
+    },
+    {
+      "actor": "master",
+      "resource": "thresholds (any site in tenant)",
+      "actions": [
+        "create",
+        "update",
+        "read"
+      ]
+    },
+    {
+      "actor": "auditor",
+      "resource": "dashboards",
+      "actions": [
+        "read"
+      ],
+      "constraint": "time_bound_access_until"
+    },
+    {
+      "actor": "admin",
+      "resource": "all",
+      "actions": [
+        "read",
+        "write"
+      ],
+      "notes": "actions audited"
+    }
+  ],
+  "defaults_and_conventions": {
+    "units": {
+      "temperature": "celsius"
+    },
+    "time": {
+      "timezone": "UTC storage, client-local display",
+      "bucket_sizes": [
+        "1h",
+        "1d"
+      ]
+    },
+    "naming": {
+      "sensor_property_values": [
+        "temperature_c",
+        "humidity_pct"
+      ]
+    }
+  }
+}

@@ -1,0 +1,165 @@
+Round 3 — Human-Friendly Verbose Summary (Final, Lean Version)
+
+Next.js & Rendering
+
+Framework: Next.js v14+ (App Router).
+
+Server Components (RSC): org/site/alerts data fetching.
+
+Client Components: charts, filters, chart builder, interactive tables.
+
+APIs: Route Handlers (Node runtime only). No Edge for DB writes.
+
+Client State & Data Fetching
+
+Zustand for local UI state (selected site/env/sensors, chart configs).
+
+SWR for GET endpoints: cached, revalidated on focus, 30s refresh for tiles/lists.
+
+Supabase clients:
+
+One server-side client for DB access.
+
+One browser auth client for sessions.
+
+No client-side SQL queries.
+
+Charts
+
+Primary: Recharts (line, area, bar, KPI).
+
+Abstracted <Chart type="..."> component so ECharts can be added later for advanced visuals (heatmap, boxplot).
+
+Database & Migrations
+
+SQL-first migrations with Supabase.
+
+TimescaleDB for hypertables, compression, continuous aggregates.
+
+No ORM initially; queries directly via SQL + Supabase client.
+
+Ingestion Security
+
+Endpoint: POST /api/ingest/readings.
+
+Headers:
+
+X-Timestamp with ±5 min replay window.
+
+X-Device-Id.
+
+X-Signature: HMAC-SHA256(body+timestamp) with device secret.
+
+Idempotency-Key.
+
+DB constraint: (sensor_id, ts) unique.
+
+Validation: Zod schemas.
+
+Realtime Updates
+
+Use polling every 30–60s for charts/tiles instead of realtime subscriptions.
+
+Keeps infra lean; add realtime later.
+
+Observability
+
+Start with Vercel logs only.
+
+No PostHog, no external log sink initially.
+
+CI/CD
+
+Environments: dev → preview → prod with Vercel.
+
+Supabase migrations only on main branch.
+
+Shadow DB for migration checks.
+
+Type/lint checks + basic contract validation in CI.
+
+Playwright and end-to-end tests deferred until later.
+
+Package Manager
+
+Use npm. Lock versions in package-lock.json.
+{
+  "round": 3,
+  "section": "Stack Preferences & Implementation Details (Lean)",
+  "next_js": {
+    "version": "14+",
+    "router": "app",
+    "rendering": {
+      "server_components": ["overview_data", "sites_list", "alerts_data", "settings_reads"],
+      "client_components": ["charts", "filters", "chart_builder_ui", "interactive_tables"]
+    },
+    "api_runtime": "node_only"
+  },
+  "client_state_and_data": {
+    "state": "zustand",
+    "caching": {
+      "library": "swr",
+      "defaults": {
+        "revalidateOnFocus": true,
+        "refreshIntervalMs_tiles_lists": 30000
+      }
+    },
+    "supabase_clients": {
+      "server_client": "db_access_in_rsc_and_route_handlers",
+      "browser_auth_client": "auth_session_only"
+    }
+  },
+  "charts": {
+    "primary_library": "recharts",
+    "future_library": "echarts",
+    "abstraction_component": "Chart",
+    "supported_types": ["line", "area", "bar", "kpi"],
+    "future_types": ["heatmap", "boxplot"]
+  },
+  "database_and_migrations": {
+    "approach": "sql_first",
+    "tooling": "supabase_migrations",
+    "timescale": {
+      "hypertables": ["readings(ts, sensor_id)"],
+      "compression": true,
+      "continuous_aggregates": ["readings_hourly", "readings_daily"]
+    },
+    "orm": "none"
+  },
+  "ingestion_security": {
+    "endpoint": "POST /api/ingest/readings",
+    "headers": {
+      "X-Timestamp": "with +/- 5 min replay window",
+      "X-Device-Id": "device identifier",
+      "X-Signature": "hmac_sha256(body+timestamp, device_secret)",
+      "Idempotency-Key": "unique per request"
+    },
+    "validation": "zod",
+    "db_constraints": {
+      "unique": ["sensor_id", "ts"]
+    }
+  },
+  "realtime_updates": {
+    "mode": "polling",
+    "interval_seconds": 30,
+    "notes": "Supabase Realtime skipped for v1; can be added later"
+  },
+  "observability": {
+    "logs": "vercel_only",
+    "notes": "centralized log sink and product analytics deferred until later"
+  },
+  "ci_cd": {
+    "environments": ["dev", "preview", "prod"],
+    "vercel_preview_per_pr": true,
+    "migrations": {
+      "run_on": "main_only",
+      "shadow_db_checks": true
+    },
+    "tests": {
+      "lint_and_types": true,
+      "api_contract": "zod_validation_in_ci",
+      "end_to_end": "deferred"
+    }
+  },
+  "package_manager": "npm"
+}

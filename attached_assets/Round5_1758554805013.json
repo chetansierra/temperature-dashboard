@@ -1,0 +1,146 @@
+Round 5 — Human-Friendly Verbose Summary
+
+(Feature Flags, Accessibility, i18n, Admin Search, Security, Testing, Seeds)
+
+Feature Flags
+
+New features gated by environment-based boolean flags (e.g., FEATURE_CHART_BUILDER_V2=false).
+
+No hosted flag service for v1.
+
+Accessibility (a11y)
+
+All actionable elements keyboard navigable with visible focus states.
+
+Semantic HTML and ARIA roles for charts with alt summaries.
+
+Color contrast ≥ 4.5:1.
+
+High contrast mode toggle available.
+
+Goal: WCAG 2.1 AA baseline compliance.
+
+Internationalization (i18n)
+
+English-only for v1.
+
+Centralized strings in a single file (en.ts).
+
+Designed for easy future expansion into locales.
+
+Admin Organisation Search UX
+
+Admins select orgs using typeahead search (/api/admin/orgs?query=...).
+
+Debounced search to limit API load.
+
+“Recent organisations” list for quick re-selection.
+
+Read-only banner displayed once an org is selected.
+
+Sensitive Data Handling
+
+Mask emails in logs (m*****@acme.com).
+
+Never log JWTs, HMAC signatures, or ingest request bodies.
+
+Add lightweight PII guard middleware before logging.
+
+Testing Strategy (Lean)
+
+Unit tests: for Zod schemas + helpers.
+
+API tests: 5–8 core endpoints (auth guards, chart queries, alerts ack/resolve).
+
+E2E tests: deferred.
+
+Backup / Restore & Seed Data
+
+Seeds: SQL seed file + sample CSV for ingestion simulator.
+
+Backups: Supabase daily backups.
+
+Simple runbook for restore steps.
+
+DB Generation Clarification
+
+Agent expected to produce Supabase SQL migrations and CLI commands.
+
+SQL must cover tables, constraints, indexes, RLS policies.
+
+CLI usage: supabase db reset for local, supabase db push for remote.
+
+Seeds provided as .sql or .csv loaders.
+
+{
+  "round": 5,
+  "section": "Feature Flags, Accessibility, i18n, Admin Search, Security, Testing, Seeds",
+  "feature_flags": {
+    "approach": "env_based_booleans",
+    "example": "FEATURE_CHART_BUILDER_V2=false",
+    "hosted_flags": "not_used_in_v1"
+  },
+  "accessibility": {
+    "keyboard_navigation": true,
+    "visible_focus_states": true,
+    "semantic_html": true,
+    "aria_for_charts": true,
+    "alt_summaries_for_visuals": true,
+    "color_contrast_ratio": ">=4.5:1",
+    "high_contrast_mode_toggle": true,
+    "goal": "WCAG_2.1_AA"
+  },
+  "i18n": {
+    "supported_languages": ["en"],
+    "default_language": "en",
+    "string_storage": "central_file_en.ts",
+    "future_locales_possible": true
+  },
+  "admin_org_search": {
+    "method": "typeahead_search",
+    "endpoint": "/api/admin/orgs?query=",
+    "debounce": true,
+    "recent_orgs_section": true,
+    "readonly_banner": true
+  },
+  "sensitive_data_handling": {
+    "masking": {
+      "emails": "m*****@domain.com"
+    },
+    "never_log": ["jwt", "hmac_signatures", "ingest_request_bodies"],
+    "pii_guard_middleware": true
+  },
+  "testing_strategy": {
+    "unit_tests": ["zod_schemas", "helpers"],
+    "api_tests": [
+      "auth_guards",
+      "chart_query_guardrails",
+      "alerts_acknowledge_resolve_access"
+    ],
+    "e2e_tests": "deferred"
+  },
+  "backup_restore_seeds": {
+    "seeds": {
+      "sql_seed_file": true,
+      "sample_csv_ingestion": true
+    },
+    "backups": "supabase_daily",
+    "restore": "documented_in_runbook"
+  },
+  "db_generation": {
+    "expectation": "agent_must_generate_sql_and_cli_commands",
+    "migrations": {
+      "format": "sql",
+      "location": "supabase/migrations/",
+      "coverage": ["tables", "constraints", "indexes", "rls_policies"]
+    },
+    "cli_usage": {
+      "local": "supabase db reset",
+      "remote": "supabase db push"
+    },
+    "seeds": {
+      "files": ["seed.sql", "sample.csv"],
+      "purpose": "demo_tenants_sites_sensors_readings"
+    }
+  }
+}

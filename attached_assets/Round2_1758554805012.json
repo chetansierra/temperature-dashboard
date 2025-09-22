@@ -1,0 +1,222 @@
+Round 2 — Human-Friendly Verbose Summary
+
+Theme & Branding
+The application uses three core colors for consistency:
+
+Deep Blue #10367D for navigation, headers, and primary actions.
+
+Ice Blue #74B4D9 for accents, thresholds, and selection states.
+
+Neutral Grey #EBEBEB for backgrounds, cards, and gridlines.
+Typography and spacing should emphasize clarity and readability in a dashboard setting.
+
+User Roles & Visibility
+
+Master/Admin/Auditor: see the full organisation dashboard.
+
+Site Manager: only see their assigned site.
+
+Admin: enters via a separate login URL. Admin can search/select any organisation and view it in read-only mode, identical to a master view but without ability to edit, acknowledge alerts, invite users, or export.
+
+Auditor: view-only, time-bound, cannot export.
+
+Master: full control of thresholds, alerts, users within their org.
+
+Site Manager: control only within their site.
+
+Pages
+
+Overview (Organisation): KPIs across all sites, alerts summary, charts.
+
+Sites List: cards for each site with key health indicators.
+
+Site Detail: floorplan placeholder, charts, environment table, alerts.
+
+Environment Detail: sensors, thresholds, charts.
+
+Sensor Detail: calibration, current value, history.
+
+Alerts: table, filters, timeline, bulk acknowledgement (except admin/auditor).
+
+Reports: reserved, but skipped for now.
+
+Users & Roles: invite/manage masters, site managers, auditors.
+
+Settings: thresholds (multi-level), escalation windows, notification preferences.
+
+Charts & Builder
+
+Visualizations: line, area, heatmap, boxplot, bar, KPI tiles, floorplan overlays (reserved).
+
+Builder: choose scope (sensor/environment/site/org/custom), metrics (avg/min/max/p95), aggregation (raw/hourly/daily), date range.
+
+Guardrails: max 25 sensors, max 30 days raw, max 5000 points, aggregates enforced for >7 days, disallow mixed units.
+
+Starter Preset: “Top 5 sensors by variance (7d, hourly aggregates)”.
+
+Alerts
+
+Two levels:
+
+Warning: outside threshold for ≥5 minutes.
+
+Critical: outside threshold for ≥10 minutes OR sudden delta ≥3°C in 5 minutes.
+
+Notifications: system banner, map highlight, email.
+
+Escalation: to master after 15 minutes (editable by master per site).
+
+Admins/auditors cannot acknowledge or resolve.
+
+Lifecycle tracked with audit logs.
+
+APIs (REST-only)
+
+REST endpoints only, no GraphQL.
+
+Ingestion: sensors and simulator push via /api/ingest/readings.
+
+Query endpoints: overview, sites, environments, sensors, chart queries, alerts, settings, users.
+
+Pagination: cursor-based, default 50, max 200.
+
+Rate limits: reads 60 rpm, writes 20 rpm, chart queries 10 rpm.
+
+Validation: Zod schemas, Supabase JWT auth, strict RLS scoping.
+
+CSV Simulation Loader (Python)
+
+Reads CSV, replays rows in order.
+
+Sends to ingestion endpoint to mimic real sensor cadence.
+
+Configurable speed (real-time, accelerated).
+
+Ensures data visible on UI as if live.
+
+Time Handling
+
+Store all timestamps in UTC.
+
+Display in site’s local timezone by default.
+
+{
+  "round": 2,
+  "section": "Pages, Charts, Endpoints, Theming",
+  "theme": {
+    "colors": {
+      "brand_900": "#10367D",
+      "brand_100": "#74B4D9",
+      "neutral_100": "#EBEBEB"
+    },
+    "usage": {
+      "headers_and_primary_buttons": "brand_900",
+      "accents_selected_states_chart_bands": "brand_100",
+      "background_cards_gridlines": "neutral_100"
+    }
+  },
+  "roles_and_visibility": {
+    "master": "full access to all sites in their organisation; manage thresholds, users, alerts",
+    "site_manager": "access only to their site; configure thresholds and alerts locally",
+    "auditor": "time-bound, read-only, no exports, no acknowledgements",
+    "admin": {
+      "login_url": "/admin-login",
+      "capabilities": "read-only across all organisations",
+      "actions_restricted": ["export", "invite_users", "acknowledge_alerts", "resolve_alerts"],
+      "org_selection": "search and select organisation by name before viewing"
+    }
+  },
+  "pages": [
+    { "key": "overview_org", "route": "/overview" },
+    { "key": "sites_list", "route": "/sites" },
+    { "key": "site_detail", "route": "/sites/:siteId" },
+    { "key": "environment_detail", "route": "/environments/:envId" },
+    { "key": "sensor_detail", "route": "/sensors/:sensorId" },
+    { "key": "alerts", "route": "/alerts" },
+    { "key": "reports", "route": "/reports", "status": "skipped_for_now" },
+    { "key": "users_roles", "route": "/settings/users" },
+    { "key": "settings", "route": "/settings" }
+  ],
+  "chart_builder": {
+    "scopes": ["sensor", "environment", "site", "organisation", "custom_sensor_selection"],
+    "visualizations": ["line", "area", "heatmap", "boxplot", "bar", "kpi"],
+    "metrics": ["avg", "min", "max", "p95"],
+    "aggregation": ["raw", "hourly", "daily"],
+    "starter_presets": [
+      "Top 5 sensors by variance (7d, hourly aggregates)"
+    ],
+    "guardrails": {
+      "max_sensors": 25,
+      "max_raw_days": 30,
+      "max_points": 5000,
+      "force_aggregates_if_range_gt_days": 7,
+      "deny_mixed_units": true
+    }
+  },
+  "alerts": {
+    "levels": {
+      "warning": "outside min/max thresholds for >= 5 minutes",
+      "critical": "outside thresholds for >= 10 minutes OR delta >= 3C within 5 minutes"
+    },
+    "notifications": ["ui_banner", "map_indicator", "email"],
+    "escalation": {
+      "default_minutes": 15,
+      "configurable_per_site": true,
+      "target": "master"
+    },
+    "roles_restrictions": {
+      "admin": "read_only",
+      "auditor": "read_only"
+    },
+    "audit_trail": ["opened", "acknowledged", "resolved"]
+  },
+  "api_style": {
+    "approach": "REST_only",
+    "endpoints": {
+      "ingest": [
+        { "method": "POST", "path": "/api/ingest/readings" }
+      ],
+      "queries": [
+        { "method": "GET", "path": "/api/overview" },
+        { "method": "GET", "path": "/api/sites" },
+        { "method": "GET", "path": "/api/sites/:siteId" },
+        { "method": "GET", "path": "/api/environments/:envId" },
+        { "method": "GET", "path": "/api/sensors/:sensorId" },
+        { "method": "POST", "path": "/api/chart/query" },
+        { "method": "GET", "path": "/api/alerts" },
+        { "method": "POST", "path": "/api/alerts/:id/ack" },
+        { "method": "POST", "path": "/api/alerts/:id/resolve" },
+        { "method": "POST", "path": "/api/settings/thresholds" },
+        { "method": "POST", "path": "/api/settings/escalation" },
+        { "method": "POST", "path": "/api/users/invite" }
+      ]
+    },
+    "pagination": {
+      "strategy": "cursor",
+      "default_limit": 50,
+      "max_limit": 200
+    },
+    "rate_limits": {
+      "read_endpoints": "60 rpm per user",
+      "write_endpoints": "20 rpm per user",
+      "chart_queries": "10 rpm per user"
+    },
+    "validation": "Zod_schema_validation",
+    "auth": "Supabase_JWT_with_RLS"
+  },
+  "simulator": {
+    "language": "Python",
+    "inputs": "CSV file with timestamped readings",
+    "mode": "stream_rows_in_order_to_ingest_endpoint",
+    "features": {
+      "realistic_cadence": "simulate sensor interval (e.g., every 1 min)",
+      "speed_factor": "accelerated playback",
+      "start_stop_range": "specify timestamp bounds"
+    },
+    "output": "data visible on UI in real-time"
+  },
+  "time_handling": {
+    "storage": "UTC",
+    "display": "site_local_timezone"
+  }
+}

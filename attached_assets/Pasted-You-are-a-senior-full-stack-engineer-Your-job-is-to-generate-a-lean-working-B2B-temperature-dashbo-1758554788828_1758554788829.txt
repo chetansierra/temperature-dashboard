@@ -1,0 +1,91 @@
+You are a senior full-stack engineer. Your job is to generate a lean, working B2B temperature dashboard application.
+
+## Tech Stack (mandatory)
+- Frontend: Next.js 14+ (App Router), npm as the package manager
+- State: Zustand for local UI state
+- Data fetching: SWR for GET endpoints (revalidate on focus + interval refresh)
+- Auth: Supabase Auth (JWT)
+- Database: Supabase (Postgres + TimescaleDB)
+  - SQL-first migrations (no ORM for v1)
+  - Timescale hypertables, compression, continuous aggregates
+  - Row-Level Security (RLS) enforced strictly
+- APIs: REST endpoints via Next.js Route Handlers (Node runtime only)
+- Charts: Recharts for v1, abstracted in <Chart> so ECharts can be swapped in later
+- Ingestion: CSV → DB via Python simulator that calls /api/ingest/readings
+- Realtime: skipped for v1 (use polling every 30s instead)
+- Validation: Zod schemas on all request/response bodies
+- Package manager: npm only
+
+## Non-Functional Requirements
+- Roles: master, site manager, auditor (time-bound, read-only), admin (read-only superuser)
+- Admin: separate login URL (/admin-login), org search, always read-only
+- Accessibility: WCAG 2.1 AA baseline (keyboard nav, focus states, ARIA/alt text, high contrast mode)
+- Error handling: error boundaries per page, log IDs, structured API errors
+- Rate limits: 60 GET/min, 20 POST/min, 10 chart queries/min (per user)
+- Alerts: in-app notification center + fire-and-forget email
+- Data retention: raw 180 days, aggregates forever, 90 days exportable
+- Timezones: UTC in DB, display in site-local timezone
+- Feature flags: simple env-based booleans
+- Sensitive data: mask emails in logs, never log secrets
+- Testing: minimal (Zod unit tests, 5–8 API tests with supertest). E2E deferred.
+- Backups/seeds: Supabase daily backups; include seed.sql and sample.csv for ingestion simulator
+
+## Deliverables (in strict order)
+1. Repository skeleton (file tree) + npm config
+   - package.json, tsconfig.json, next.config.mjs, .env.example
+   - README with setup instructions
+2. Supabase SQL migrations
+   - Tables, constraints, indexes, hypertables, aggregates, RLS policies
+   - Place in supabase/migrations/
+   - Include seed.sql and sample.csv
+   - CLI usage: `supabase db reset` (local), `supabase db push` (remote)
+3. API endpoints (REST only)
+   - /api/health
+   - /api/ingest/readings (HMAC headers, idempotency)
+   - /api/overview
+   - /api/sites, /api/sites/:id
+   - /api/environments/:id
+   - /api/sensors/:id
+   - /api/chart/query (guardrails: ≤25 sensors, ≤30d raw, ≤5000 points, aggregates >7d)
+   - /api/alerts, /api/alerts/:id/ack, /api/alerts/:id/resolve
+   - /api/settings/*
+   - /api/users/invite
+4. Pages & routes
+   - /overview
+   - /sites
+   - /sites/[siteId]
+   - /environments/[envId]
+   - /sensors/[sensorId]
+   - /alerts
+   - /settings
+   - /settings/users
+   - /admin-login
+5. UI components
+   - <Chart type="..."> abstraction
+   - KPI tiles
+   - Alerts table (filters, role-guarded actions)
+   - Chart Builder with server guardrails
+   - RoleGuard
+   - ErrorBoundary
+6. Python simulator
+   - Reads CSV, replays to /api/ingest/readings
+   - Args: --csv, --speed, --start, --end
+   - Mimics real cadence; supports acceleration
+7. Tests
+   - Zod schema unit tests
+   - API tests for auth guard, rate limiting, chart guardrails, alerts actions
+8. Runbook
+   - Commands for local dev: npm run dev, supabase db reset, simulator usage
+   - Commands for deploy: supabase db push, npm run build
+
+## Style & Output Rules
+- Keep the repo lean and production-ready
+- Only include features marked as v1; skip optional/deferred items
+- Always output:
+  1) file tree
+  2) full file contents (chunked by folder if large)
+- For edits: output unified diffs or full file replacements (never partials)
+- Use npm (no yarn/pnpm)
+- Do not issue client-side DB calls; all DB access is server-side with RLS enforced
+- JSON in appendices is normative; if there’s conflict, JSON overrides the human summaries
+
