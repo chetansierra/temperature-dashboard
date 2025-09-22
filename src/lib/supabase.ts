@@ -29,14 +29,15 @@ export type Database = {
           updated_at?: string
         }
       }
-      users: {
+      profiles: {
         Row: {
           id: string
           tenant_id: string | null
           email: string
+          full_name: string | null
           role: 'master' | 'site_manager' | 'auditor' | 'admin'
-          site_id: string | null
-          access_expires_at: string | null
+          site_access: string[] | null
+          auditor_expires_at: string | null
           created_at: string
           updated_at: string
         }
@@ -44,9 +45,10 @@ export type Database = {
           id: string
           tenant_id?: string | null
           email: string
+          full_name?: string | null
           role: 'master' | 'site_manager' | 'auditor' | 'admin'
-          site_id?: string | null
-          access_expires_at?: string | null
+          site_access?: string[] | null
+          auditor_expires_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -54,9 +56,10 @@ export type Database = {
           id?: string
           tenant_id?: string | null
           email?: string
+          full_name?: string | null
           role?: 'master' | 'site_manager' | 'auditor' | 'admin'
-          site_id?: string | null
-          access_expires_at?: string | null
+          site_access?: string[] | null
+          auditor_expires_at?: string | null
           created_at?: string
           updated_at?: string
         }

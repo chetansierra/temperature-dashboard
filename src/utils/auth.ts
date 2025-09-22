@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 import { Database } from '@/lib/supabase'
 
-export type UserProfile = Database['public']['Tables']['users']['Row']
+export type UserProfile = Database['public']['Tables']['profiles']['Row']
 
 export interface AuthContext {
   user: {
@@ -47,7 +47,7 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext 
 
     // Get the user profile with role and tenant information
     const { data: profile, error: profileError } = await supabase
-      .from('users')
+      .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single()
@@ -87,9 +87,9 @@ export function canAccessSite(profile: UserProfile, siteId: string): boolean {
     return true
   }
   
-  // Site manager can only access their assigned site
+  // Site manager can only access their assigned sites
   if (profile.role === 'site_manager') {
-    return profile.site_id === siteId
+    return profile.site_access?.includes(siteId) || false
   }
   
   // Master and auditor can access any site in their tenant (handled by RLS)
@@ -107,9 +107,9 @@ export function canManageAlerts(profile: UserProfile, siteId?: string): boolean 
     return true
   }
   
-  // Site manager can manage alerts in their site
+  // Site manager can manage alerts in their assigned sites
   if (profile.role === 'site_manager' && siteId) {
-    return profile.site_id === siteId
+    return profile.site_access?.includes(siteId) || false
   }
   
   return false
@@ -131,9 +131,9 @@ export function canManageThresholds(profile: UserProfile, siteId?: string): bool
     return true
   }
   
-  // Site manager can manage thresholds in their site
+  // Site manager can manage thresholds in their assigned sites
   if (profile.role === 'site_manager' && siteId) {
-    return profile.site_id === siteId
+    return profile.site_access?.includes(siteId) || false
   }
   
   return false
