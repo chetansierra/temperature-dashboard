@@ -20,6 +20,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     { name: 'Environments', href: '/environments', icon: '❄️' },
     { name: 'Sensors', href: '/sensors', icon: '🌡️' },
     { name: 'Alerts', href: '/alerts', icon: '🚨' },
+    { name: 'Analytics', href: '/analytics', icon: '📈' },
     { name: 'Settings', href: '/settings', icon: '⚙️' },
   ]
 
