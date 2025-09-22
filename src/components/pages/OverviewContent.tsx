@@ -62,14 +62,28 @@ export const OverviewContent: React.FC = () => {
       const startTime = new Date()
       startTime.setHours(endTime.getHours() - 6) // Last 6 hours
 
-      const { data: { session } } = await supabase.auth.getSession()
+      // Get fresh session and validate token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
+      if (sessionError || !session?.access_token) {
+        console.error('Session error:', sessionError)
+        setChartError('Authentication failed - please login again')
+        setChartLoading(false)
+        return
+      }
+
+      // Validate JWT token format
+      const tokenParts = session.access_token.split('.')
+      if (tokenParts.length !== 3) {
+        console.error('Invalid JWT token format')
+        setChartError('Invalid authentication token - please login again')
+        setChartLoading(false)
+        return
       }
       
-      if (session?.access_token) {
-        headers.Authorization = `Bearer ${session.access_token}`
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
       }
 
       const response = await fetch('/api/chart/query', {
