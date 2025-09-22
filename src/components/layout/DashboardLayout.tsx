@@ -17,6 +17,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const navigation = [
     { name: 'Overview', href: '/overview', icon: '📊' },
     { name: 'Sites', href: '/sites', icon: '🏢' },
+    { name: 'Environments', href: '/environments', icon: '❄️' },
+    { name: 'Sensors', href: '/sensors', icon: '🌡️' },
     { name: 'Alerts', href: '/alerts', icon: '🚨' },
     { name: 'Settings', href: '/settings', icon: '⚙️' },
   ]
