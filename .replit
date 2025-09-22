@@ -1,6 +1,7 @@
 modules = ["nodejs-20", "python-3.12", "web"]
 [agent]
 expertMode = true
+integrations = ["javascript_supabase:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
@@ -34,7 +35,7 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 39635
+localPort = 37217
 externalPort = 3000
 
 [deployment]
