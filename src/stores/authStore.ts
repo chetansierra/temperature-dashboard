@@ -5,10 +5,11 @@ import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js'
 export interface UserProfile {
   id: string
   email: string
+  full_name: string | null
   role: 'master' | 'site_manager' | 'auditor' | 'admin'
   tenant_id: string | null
-  site_id: string | null
-  access_expires_at: string | null
+  site_access: string[] | null
+  auditor_expires_at: string | null
   created_at: string
   updated_at: string
 }
@@ -48,7 +49,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (session?.user) {
         // Get user profile
         const { data: profile, error: profileError } = await supabase
-          .from('users')
+          .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single()
@@ -65,8 +66,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         // Check if auditor access has expired
-        if (profile.role === 'auditor' && profile.access_expires_at) {
-          const expiryDate = new Date(profile.access_expires_at)
+        if (profile.role === 'auditor' && profile.auditor_expires_at) {
+          const expiryDate = new Date(profile.auditor_expires_at)
           if (expiryDate < new Date()) {
             // Access expired, sign out
             await supabase.auth.signOut()
@@ -100,15 +101,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (event === 'SIGNED_IN' && session?.user) {
           // Fetch user profile
           const { data: profile, error: profileError } = await supabase
-            .from('users')
+            .from('profiles')
             .select('*')
             .eq('id', session.user.id)
             .single()
 
           if (!profileError && profile) {
             // Check auditor access expiry
-            if (profile.role === 'auditor' && profile.access_expires_at) {
-              const expiryDate = new Date(profile.access_expires_at)
+            if (profile.role === 'auditor' && profile.auditor_expires_at) {
+              const expiryDate = new Date(profile.auditor_expires_at)
               if (expiryDate < new Date()) {
                 await supabase.auth.signOut()
                 return
@@ -176,15 +177,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // supabase is already imported as the client instance
       
       const { data: profile, error } = await supabase
-        .from('users')
+        .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single()
 
       if (!error && profile) {
         // Check auditor access expiry
-        if (profile.role === 'auditor' && profile.access_expires_at) {
-          const expiryDate = new Date(profile.access_expires_at)
+        if (profile.role === 'auditor' && profile.auditor_expires_at) {
+          const expiryDate = new Date(profile.auditor_expires_at)
           if (expiryDate < new Date()) {
             await supabase.auth.signOut()
             return
@@ -224,9 +225,9 @@ export const useCanManageAlerts = (siteId?: string) => {
     return true
   }
   
-  // Site manager can manage alerts in their site
+  // Site manager can manage alerts in their assigned sites
   if (profile.role === 'site_manager' && siteId) {
-    return profile.site_id === siteId
+    return profile.site_access?.includes(siteId) || false
   }
   
   return false
@@ -241,9 +242,9 @@ export const useCanAccessSite = (siteId: string) => {
     return true
   }
   
-  // Site manager can only access their assigned site
+  // Site manager can only access their assigned sites
   if (profile.role === 'site_manager') {
-    return profile.site_id === siteId
+    return profile.site_access?.includes(siteId) || false
   }
   
   // Master and auditor can access any site in their tenant (handled by RLS)

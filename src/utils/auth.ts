@@ -19,9 +19,12 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext 
     const authHeader = request.headers.get('authorization')
     let supabase
     
+    console.log('Auth Debug - authHeader:', authHeader ? 'present' : 'missing')
+    
     if (authHeader && authHeader.startsWith('Bearer ')) {
       // Create client with the bearer token for API requests
       const token = authHeader.replace('Bearer ', '')
+      console.log('Auth Debug - using Bearer token')
       supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -35,13 +38,18 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext 
       )
     } else {
       // Use the standard server client for cookie-based auth
+      console.log('Auth Debug - using cookie-based auth')
       supabase = await createServerSupabaseClient()
     }
     
     // Get the user from the session
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
+    console.log('Auth Debug - user:', user ? user.id : 'null')
+    console.log('Auth Debug - authError:', authError ? authError.message : 'none')
+    
     if (authError || !user) {
+      console.log('Auth Debug - returning null due to no user or auth error')
       return null
     }
 
@@ -52,7 +60,11 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext 
       .eq('id', user.id)
       .single()
 
+    console.log('Auth Debug - profile:', profile ? profile.email : 'null')
+    console.log('Auth Debug - profileError:', profileError ? profileError.message : 'none')
+
     if (profileError || !profile) {
+      console.log('Auth Debug - returning null due to no profile or profile error')
       return null
     }
 
