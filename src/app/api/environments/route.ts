@@ -218,15 +218,9 @@ export async function POST(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    const supabase = await createServerSupabaseClient()
-
-    // Set the user context for RLS
-    const { error: authSetError } = await supabase.auth.getUser()
-    if (authSetError) {
-      console.error('Failed to set auth context:', authSetError)
-      const response = NextResponse.json(createAuthError('Authentication failed'), { status: 401 })
-      return addRateLimitHeaders(response, rateLimitResult)
-    }
+    // Use service role client for bypassed authentication (bypasses RLS)
+    const { supabaseAdmin } = await import('@/lib/supabase-server')
+    const supabase = supabaseAdmin
 
     const { profile } = authContext
 

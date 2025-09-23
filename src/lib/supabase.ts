@@ -10,10 +10,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     detectSessionInUrl: true,
     flowType: 'pkce',
-    // Use localStorage for session persistence on client-side
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    // Cookie configuration for SSR
-    storageKey: 'supabase.auth.token'
+    storageKey: 'sb-vhgddpxytbxqqmyicxgb-auth-token'
   }
 })
 

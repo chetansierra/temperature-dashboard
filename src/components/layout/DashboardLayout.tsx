@@ -62,7 +62,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
       <div className="lg:pl-64">
         {/* Top bar */}
         <div className="sticky top-0 z-10 bg-white shadow-sm border-b border-gray-200">
-          <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center px-4 sm:px-6 lg:px-8">
             <button
               type="button"
               className="lg:hidden -ml-0.5 -mt-0.5 h-12 w-12 inline-flex items-center justify-center rounded-md text-gray-500 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
@@ -72,7 +72,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
               <span className="text-xl">☰</span>
             </button>
 
-            <div className="flex items-center space-x-4">
+            {/* Spacer to push user info to the right */}
+            <div className="flex-1"></div>
+
+            <div className="flex items-center space-x-4 pr-4">
               <div className="text-sm text-gray-600">
                 {profile?.role && (
                   <span className="capitalize bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
@@ -83,7 +86,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
               <div className="text-sm text-gray-900">{user?.email}</div>
               <button
                 onClick={handleSignOut}
-                className="text-sm text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="text-sm text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 px-3 py-1 rounded-md transition-colors"
               >
                 Sign out
               </button>
