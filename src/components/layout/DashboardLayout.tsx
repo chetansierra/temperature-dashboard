@@ -23,6 +23,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     { name: 'Alerts', href: '/alerts', icon: '🚨' },
     { name: 'Analytics', href: '/analytics', icon: '📈' },
     { name: 'Settings', href: '/settings', icon: '⚙️' },
+    { name: 'Users', href: '/settings/users', icon: '👥', roles: ['master', 'admin'] },
   ]
 
   const handleSignOut = async () => {
@@ -102,11 +103,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
 }
 
 interface SidebarContentProps {
-  navigation: Array<{ name: string; href: string; icon: string }>
+  navigation: Array<{ name: string; href: string; icon: string; roles?: string[] }>
   pathname: string
 }
 
 const SidebarContent: React.FC<SidebarContentProps> = ({ navigation, pathname }) => {
+  const { profile } = useAuthStore()
+
   return (
     <>
       <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
@@ -115,6 +118,11 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ navigation, pathname })
         </div>
         <nav className="mt-8 flex-1 space-y-1 px-2">
           {navigation.map((item) => {
+            // Check if item has role restrictions
+            if (item.roles && profile?.role && !item.roles.includes(profile.role)) {
+              return null
+            }
+
             const isActive = pathname === item.href
             return (
               <Link

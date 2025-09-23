@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { SensorDetailResponseSchema } from '@/utils/schemas'
-import { getAuthContext, createAuthError } from '@/utils/auth'
+import { getAuthContext, createAuthError, canAccessSite } from '@/utils/auth'
 import { rateLimiters, addRateLimitHeaders, createRateLimitError } from '@/utils/rate-limit'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ sensorId: string }> }
+  { params }: { params: { sensorId: string } }
 ) {
-  const { sensorId } = await params
   try {
     // Apply rate limiting
     const rateLimitResult = await rateLimiters.get(request)
@@ -24,125 +22,92 @@ export async function GET(
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    const { profile } = authContext
     const supabase = await createServerSupabaseClient()
 
-    // Get sensor details with related data
-    const { data: sensor, error: sensorError } = await supabase
+    // Set the user context for RLS
+    const { error: authSetError } = await supabase.auth.getUser()
+    if (authSetError) {
+      console.error('Failed to set auth context:', authSetError)
+      const response = NextResponse.json(createAuthError('Authentication failed'), { status: 401 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
+
+    const { profile } = authContext
+    const { sensorId } = params
+
+    // Get sensor with environment and site details
+    const { data: sensor, error } = await supabase
       .from('sensors')
       .select(`
-        *,
-        sites!inner(site_name, site_code, location),
-        environments!inner(name, environment_type),
-        thresholds(*)
+        id,
+        sensor_id_local,
+        property_measured,
+        installation_date,
+        location_details,
+        status,
+        created_at,
+        environments (
+          name,
+          environment_type
+        ),
+        sites (
+          site_name,
+          site_code,
+          location,
+          timezone
+        )
       `)
       .eq('id', sensorId)
       .eq('tenant_id', profile.tenant_id!)
       .single()
 
-    if (sensorError || !sensor) {
+    if (error || !sensor) {
       const response = NextResponse.json({
         error: {
           code: 'SENSOR_NOT_FOUND',
-          message: 'Sensor not found',
+          message: 'Sensor not found or access denied',
           requestId: crypto.randomUUID()
         }
       }, { status: 404 })
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Get recent readings (last 100)
-    const { data: recentReadings, error: readingsError } = await supabase
-      .from('readings')
-      .select('ts, value')
-      .eq('sensor_id', sensorId)
-      .order('ts', { ascending: false })
-      .limit(100)
+    // Check permissions - verify user can access the site that contains this sensor
+    // We need to get the site_id from the sensor's environment
+    const { data: envData, error: envError } = await supabase
+      .from('sensors')
+      .select('site_id')
+      .eq('id', sensorId)
+      .single()
 
-    if (readingsError) {
-      const response = NextResponse.json({
-        error: {
-          code: 'READINGS_FETCH_FAILED',
-          message: 'Failed to fetch sensor readings',
-          requestId: crypto.randomUUID()
-        }
-      }, { status: 500 })
+    if (!envError && envData && !canAccessSite(profile, envData.site_id)) {
+      const response = NextResponse.json(createAuthError('Access denied to this sensor'), { status: 403 })
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Get alerts for this sensor
-    const { data: alertsData, error: alertsError } = await supabase
-      .from('alerts')
-      .select(`
-        id,
-        level,
-        status,
-        message,
-        opened_at,
-        acknowledged_at,
-        resolved_at
-      `)
+    // Get latest reading for the sensor (optional)
+    const { data: latestReading } = await supabase
+      .from('readings')
+      .select('value, ts')
       .eq('sensor_id', sensorId)
-      .order('opened_at', { ascending: false })
-      .limit(20)
+      .order('ts', { ascending: false })
+      .limit(1)
+      .single()
 
-    const alerts = alertsData || []
-
-    // Calculate statistics from recent readings
-    let statistics = null
-    if (recentReadings && recentReadings.length > 0) {
-      const values = recentReadings.map(r => r.value)
-      const sortedValues = [...values].sort((a, b) => a - b)
-      
-      statistics = {
-        current_value: values[0], // Most recent reading
-        avg_value: values.reduce((sum, val) => sum + val, 0) / values.length,
-        min_value: Math.min(...values),
-        max_value: Math.max(...values),
-        median_value: sortedValues[Math.floor(sortedValues.length / 2)],
-        reading_count: values.length,
-        last_reading_at: recentReadings[0].ts
-      }
+    const sensorWithReading = {
+      ...sensor,
+      latest_reading: latestReading ? {
+        value: latestReading.value,
+        timestamp: latestReading.ts
+      } : undefined
     }
 
-    // Get hourly aggregated data for the last 24 hours for trend analysis
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    const { data: hourlyData, error: hourlyError } = await supabase
-      .from('readings_hourly')
-      .select('bucket, avg_value, min_value, max_value')
-      .eq('sensor_id', sensorId)
-      .gte('bucket', twentyFourHoursAgo)
-      .order('bucket', { ascending: true })
-
-    const trendData = hourlyData?.map(reading => ({
-      timestamp: reading.bucket,
-      avg_value: reading.avg_value,
-      min_value: reading.min_value,
-      max_value: reading.max_value
-    })) || []
-
-    const responseData = {
-      sensor: {
-        ...sensor,
-        site: sensor.sites,
-        environment: sensor.environments,
-        thresholds: sensor.thresholds || []
-      },
-      statistics,
-      recent_readings: recentReadings || [],
-      trend_data: trendData,
-      alerts
-    }
-
-    // Validate response against schema
-    const validatedResponse = SensorDetailResponseSchema.parse(responseData)
-    
-    const response = NextResponse.json(validatedResponse)
+    const response = NextResponse.json({ sensor: sensorWithReading })
     return addRateLimitHeaders(response, rateLimitResult)
 
   } catch (error) {
-    console.error('Sensor detail endpoint error:', error)
-    
+    console.error('Sensor detail GET endpoint error:', error)
+
     const errorResponse = {
       error: {
         code: 'SENSOR_DETAIL_FAILED',

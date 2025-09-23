@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { getAuthContext } from '@/utils/auth'
+import { getAuthContext, createAuthError, canAccessSite } from '@/utils/auth'
 import { rateLimiters, addRateLimitHeaders, createRateLimitError } from '@/utils/rate-limit'
+import { z } from 'zod'
+
+const CreateSensorSchema = z.object({
+  environment_id: z.string().uuid(),
+  sensor_id_local: z.string().max(50).optional(),
+  property_measured: z.string().min(1).max(50),
+  installation_date: z.string().optional(),
+  location_details: z.string().max(200).optional()
+})
 
 export async function GET(request: NextRequest) {
-  // Apply rate limiting (moved outside try for catch block access)
-  let rateLimitResult
   try {
-    rateLimitResult = await rateLimiters.get(request)
+    // Apply rate limiting
+    const rateLimitResult = await rateLimiters.get(request)
     if (!rateLimitResult.success) {
       const response = NextResponse.json(createRateLimitError(rateLimitResult.resetTime), { status: 429 })
       return addRateLimitHeaders(response, rateLimitResult)
@@ -16,274 +24,291 @@ export async function GET(request: NextRequest) {
     // Get authenticated user context
     const authContext = await getAuthContext(request)
     if (!authContext) {
-      const response = NextResponse.json(
-        { error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
+      const response = NextResponse.json(createAuthError('Authentication required'), { status: 401 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Set the user context for RLS
+    const { error: authSetError } = await supabase.auth.getUser()
+    if (authSetError) {
+      console.error('Failed to set auth context:', authSetError)
+      const response = NextResponse.json(createAuthError('Authentication failed'), { status: 401 })
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
     const { profile } = authContext
-    const supabase = await createServerSupabaseClient()
 
-    // Build the query based on user role and tenant access
-    let sensorsQuery = supabase
+    // Parse query parameters
+    const url = new URL(request.url)
+    const environmentId = url.searchParams.get('environment_id')
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200) // Default 50, max 200
+
+    // Get sensors with joined data using a manual approach
+    const { data: rawSensors, error } = await supabase
       .from('sensors')
       .select(`
         id,
-        name,
-        sensor_type,
-        unit,
+        sensor_id_local,
+        property_measured,
+        installation_date,
         location_details,
-        is_active,
-        last_reading_at,
-        site_id,
-        environment_id,
-        tenant_id,
+        status,
         created_at,
-        sites!inner(
-          id,
-          name,
-          location
-        ),
-        environments!inner(
-          id,
-          name,
-          description
+        environment_id,
+        site_id
+      `)
+      .eq('tenant_id', profile.tenant_id!)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) {
+      console.error('Sensors query error:', error)
+      const response = NextResponse.json({
+        error: {
+          code: 'SENSORS_FETCH_FAILED',
+          message: 'Failed to fetch sensors',
+          requestId: crypto.randomUUID()
+        }
+      }, { status: 500 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
+
+    // Get environment and site data separately
+    const sensorIds = rawSensors?.map(s => s.id) || []
+    let sensorsWithDetails: any[] = []
+
+    if (rawSensors && rawSensors.length > 0) {
+      // Get environments
+      const { data: environments } = await supabase
+        .from('environments')
+        .select('id, name, environment_type')
+        .in('id', rawSensors.map(s => s.environment_id))
+
+      // Get sites
+      const { data: sites } = await supabase
+        .from('sites')
+        .select('id, site_name, site_code, location')
+        .in('id', rawSensors.map(s => s.site_id))
+
+      // Combine the data
+      const envMap = new Map(environments?.map(e => [e.id, e]) || [])
+      const siteMap = new Map(sites?.map(s => [s.id, s]) || [])
+
+      sensorsWithDetails = rawSensors.map(sensor => ({
+        id: sensor.id,
+        sensor_id_local: sensor.sensor_id_local,
+        property_measured: sensor.property_measured,
+        installation_date: sensor.installation_date,
+        location_details: sensor.location_details,
+        status: sensor.status,
+        created_at: sensor.created_at,
+        environment_id: sensor.environment_id,
+        site_id: sensor.site_id,
+        // Add computed fields for frontend compatibility
+        name: sensor.sensor_id_local || `Sensor ${sensor.id.slice(-8)}`,
+        sensor_type: sensor.property_measured,
+        unit: sensor.property_measured === 'temperature_c' ? '°C' : '',
+        is_active: sensor.status === 'active',
+        site_name: siteMap.get(sensor.site_id)?.site_name || 'Unknown Site',
+        environment_name: envMap.get(sensor.environment_id)?.name || 'Unknown Environment',
+        current_temperature: null, // Will be populated from readings if needed
+        battery_level: null,
+        signal_strength: null,
+        last_reading_at: null,
+        alert_count: 0,
+        readings_count_24h: 0
+      }))
+    }
+
+    const response = NextResponse.json({ sensors: sensorsWithDetails })
+    return addRateLimitHeaders(response, rateLimitResult)
+
+  } catch (error) {
+    console.error('Sensors GET endpoint error:', error)
+
+    const errorResponse = {
+      error: {
+        code: 'SENSORS_FAILED',
+        message: 'Failed to fetch sensors data',
+        requestId: crypto.randomUUID()
+      }
+    }
+
+    return NextResponse.json(errorResponse, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    // Apply rate limiting
+    const rateLimitResult = await rateLimiters.post(request)
+    if (!rateLimitResult.success) {
+      const response = NextResponse.json(createRateLimitError(rateLimitResult.resetTime), { status: 429 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
+
+    // Get authenticated user context
+    const authContext = await getAuthContext(request)
+    if (!authContext) {
+      const response = NextResponse.json(createAuthError('Authentication required'), { status: 401 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
+
+    const supabase = await createServerSupabaseClient()
+
+    // Set the user context for RLS
+    const { error: authSetError } = await supabase.auth.getUser()
+    if (authSetError) {
+      console.error('Failed to set auth context:', authSetError)
+      const response = NextResponse.json(createAuthError('Authentication failed'), { status: 401 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
+
+    const { profile } = authContext
+
+    // Parse and validate request body
+    const body = await request.json()
+    const validatedData = CreateSensorSchema.parse(body)
+
+    // Get environment details to verify access and get site information
+    const { data: environment, error: envError } = await supabase
+      .from('environments')
+      .select(`
+        id,
+        site_id,
+        tenant_id,
+        name,
+        sites (
+          site_name,
+          site_code
         )
       `)
+      .eq('id', validatedData.environment_id)
+      .eq('tenant_id', profile.tenant_id!)
+      .single()
 
-    // Apply tenant/role-based filtering
-    if (profile.role === 'admin') {
-      // Admin can see all sensors
-    } else if (profile.role === 'auditor') {
-      // Auditor can see sensors in their assigned tenant
-      if (profile.auditor_expires_at && new Date(profile.auditor_expires_at) <= new Date()) {
-        const response = NextResponse.json(
-          { error: { code: 'ACCESS_EXPIRED', message: 'Auditor access has expired' } },
-          { status: 403 }
-        )
-        return addRateLimitHeaders(response, rateLimitResult)
-      }
-      sensorsQuery = sensorsQuery.eq('tenant_id', profile.tenant_id)
-    } else if (profile.role === 'master') {
-      // Master can see all sensors in their tenant
-      sensorsQuery = sensorsQuery.eq('tenant_id', profile.tenant_id)
-    } else if (profile.role === 'site_manager') {
-      // Site manager can only see sensors in their assigned sites
-      if (!profile.site_access || profile.site_access.length === 0) {
-        const response = NextResponse.json({
-          success: true,
-          sensors: [],
-          total: 0,
-          stats: {
-            total: 0,
-            online: 0,
-            warning: 0,
-            offline: 0,
-            inactive: 0,
-            active_alerts: 0
-          },
-          timestamp: new Date().toISOString()
-        })
-        return addRateLimitHeaders(response, rateLimitResult)
-      }
-      sensorsQuery = sensorsQuery
-        .eq('tenant_id', profile.tenant_id)
-        .in('site_id', profile.site_access)
-    }
-
-    const { data: sensors, error: sensorsError } = await sensorsQuery.order('name')
-
-    if (sensorsError) {
-      console.error('Database error fetching sensors:', sensorsError)
-      const response = NextResponse.json(
-        { error: { code: 'DATABASE_ERROR', message: 'Failed to fetch sensors' } },
-        { status: 500 }
-      )
-      return addRateLimitHeaders(response, rateLimitResult)
-    }
-
-    // Early return if no sensors to avoid unnecessary queries
-    if (!sensors || sensors.length === 0) {
+    if (envError || !environment) {
       const response = NextResponse.json({
-        success: true,
-        sensors: [],
-        total: 0,
-        stats: {
-          total: 0,
-          online: 0,
-          warning: 0,
-          offline: 0,
-          inactive: 0,
-          active_alerts: 0
-        },
-        timestamp: new Date().toISOString()
-      })
+        error: {
+          code: 'ENVIRONMENT_NOT_FOUND',
+          message: 'Environment not found or access denied',
+          requestId: crypto.randomUUID()
+        }
+      }, { status: 404 })
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Extract sensor IDs for batch queries
-    const sensorIds = sensors.map((sensor: any) => sensor.id)
-    const now24hAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    const now48hAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
-
-    // Batch query 1: Get most recent reading per sensor (bounded to last 48h)
-    const { data: allRecentReadings } = await supabase
-      .from('readings')
-      .select('sensor_id, temperature_c, humidity, metadata, ts')
-      .in('sensor_id', sensorIds)
-      .gte('ts', now48hAgo)
-      .order('ts', { ascending: false })
-
-    // Batch query 2: Get 24h reading counts per sensor
-    const { data: readingCountsData } = await supabase
-      .from('readings')
-      .select('sensor_id')
-      .in('sensor_id', sensorIds)
-      .gte('ts', now24hAgo)
-
-    // Batch query 3: Get active alert counts per sensor
-    const { data: alertCountsData } = await supabase
-      .from('alerts')
-      .select('sensor_id')
-      .in('sensor_id', sensorIds)
-      .eq('status', 'active')
-
-    // Process reading counts
-    const readingCounts: Array<{ sensor_id: string; count: number }> = []
-    if (readingCountsData) {
-      const counts = new Map<string, number>()
-      readingCountsData.forEach((reading: any) => {
-        const current = counts.get(reading.sensor_id) || 0
-        counts.set(reading.sensor_id, current + 1)
-      })
-      counts.forEach((count, sensor_id) => {
-        readingCounts.push({ sensor_id, count })
-      })
+    // Check permissions - verify user can access the site that contains this environment
+    if (!canAccessSite(profile, environment.site_id)) {
+      const response = NextResponse.json(createAuthError('Access denied to this environment'), { status: 403 })
+      return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Process alert counts
-    const alertCounts: Array<{ sensor_id: string; count: number }> = []
-    if (alertCountsData) {
-      const counts = new Map<string, number>()
-      alertCountsData.forEach((alert: any) => {
-        const current = counts.get(alert.sensor_id) || 0
-        counts.set(alert.sensor_id, current + 1)
-      })
-      counts.forEach((count, sensor_id) => {
-        alertCounts.push({ sensor_id, count })
-      })
-    }
+    // Check for duplicate sensor_id_local in the same environment (if provided)
+    if (validatedData.sensor_id_local) {
+      const { data: existingSensor } = await supabase
+        .from('sensors')
+        .select('id')
+        .eq('environment_id', validatedData.environment_id)
+        .eq('sensor_id_local', validatedData.sensor_id_local)
+        .single()
 
-    // Create lookup maps for O(1) access
-    const recentReadingMap = new Map<string, any>()
-    const readingCountMap = new Map<string, number>()
-    const alertCountMap = new Map<string, number>()
-
-    // Group recent readings by sensor (get most recent per sensor)
-    if (allRecentReadings && allRecentReadings.length > 0) {
-      const sensorReadings = new Map<string, any>()
-      allRecentReadings.forEach((reading: any) => {
-        if (!sensorReadings.has(reading.sensor_id) || 
-            new Date(reading.ts) > new Date(sensorReadings.get(reading.sensor_id).ts)) {
-          sensorReadings.set(reading.sensor_id, reading)
-        }
-      })
-      sensorReadings.forEach((reading, sensorId) => {
-        recentReadingMap.set(sensorId, reading)
-      })
-    }
-
-    // Populate count maps
-    readingCounts.forEach((item) => {
-      readingCountMap.set(item.sensor_id, item.count)
-    })
-    alertCounts.forEach((item) => {
-      alertCountMap.set(item.sensor_id, item.count)
-    })
-
-    // Process sensors with pre-grouped data
-    const sensorsWithStats = sensors.map((sensor: any) => {
-      const recentReading = recentReadingMap.get(sensor.id)
-      const readingsCount24h = readingCountMap.get(sensor.id) || 0
-      const alertsCount = alertCountMap.get(sensor.id) || 0
-
-      // Determine sensor status
-      let status: 'online' | 'offline' | 'warning' = 'offline'
-      
-      if (sensor.is_active && recentReading) {
-        const lastReadingTime = new Date(recentReading.ts).getTime()
-        const now = new Date().getTime()
-        const minutesAgo = (now - lastReadingTime) / (1000 * 60)
-        
-        if (minutesAgo <= 30) {
-          status = alertsCount > 0 ? 'warning' : 'online'
-        } else if (minutesAgo <= 120) {
-          status = 'warning'
-        } else {
-          status = 'offline'
-        }
+      if (existingSensor) {
+        const response = NextResponse.json({
+          error: {
+            code: 'SENSOR_ID_EXISTS',
+            message: 'A sensor with this local ID already exists in this environment',
+            requestId: crypto.randomUUID()
+          }
+        }, { status: 409 })
+        return addRateLimitHeaders(response, rateLimitResult)
       }
+    }
 
-      // Extract metadata for battery and signal info
-      const metadata = recentReading?.metadata || {}
-      const batteryLevel = metadata?.device_battery || null
-      const signalStrength = metadata?.signal_strength || null
+    // Generate a unique global sensor ID
+    const sensorId = crypto.randomUUID()
 
-      return {
-        id: sensor.id,
-        name: sensor.name,
-        sensor_type: sensor.sensor_type,
-        unit: sensor.unit,
-        location_details: sensor.location_details,
-        is_active: sensor.is_active,
-        site_name: sensor.sites.name,
-        site_id: sensor.site_id,
-        environment_name: sensor.environments.name,
-        environment_id: sensor.environment_id,
-        current_temperature: recentReading?.temperature_c || null,
-        battery_level: batteryLevel,
-        signal_strength: signalStrength,
-        last_reading_at: sensor.last_reading_at,
-        status: status,
-        alert_count: alertsCount,
-        readings_count_24h: readingsCount24h,
-        created_at: sensor.created_at
-      }
-    })
+    // Create the sensor
+    const sensorData = {
+      id: sensorId,
+      tenant_id: profile.tenant_id!,
+      site_id: environment.site_id,
+      environment_id: validatedData.environment_id,
+      sensor_id_local: validatedData.sensor_id_local || null,
+      property_measured: validatedData.property_measured,
+      installation_date: validatedData.installation_date ? new Date(validatedData.installation_date).toISOString().split('T')[0] : null,
+      location_details: validatedData.location_details || null,
+      status: 'active' as const
+    }
 
-    // Sort by status priority (offline first, then warnings, then online)
-    const statusPriority: Record<string, number> = { 'offline': 0, 'warning': 1, 'online': 2 }
-    sensorsWithStats.sort((a: any, b: any) => {
-      return statusPriority[a.status] - statusPriority[b.status]
-    })
+    const { data: sensor, error: createError } = await supabase
+      .from('sensors')
+      .insert(sensorData)
+      .select(`
+        id,
+        sensor_id_local,
+        property_measured,
+        installation_date,
+        location_details,
+        status,
+        created_at,
+        environments (
+          name
+        )
+      `)
+      .single()
+
+    if (createError) {
+      console.error('Sensor creation error:', createError)
+      const response = NextResponse.json({
+        error: {
+          code: 'SENSOR_CREATE_FAILED',
+          message: 'Failed to create sensor',
+          requestId: crypto.randomUUID()
+        }
+      }, { status: 500 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
 
     const response = NextResponse.json({
       success: true,
-      sensors: sensorsWithStats,
-      total: sensorsWithStats.length,
-      stats: {
-        total: sensorsWithStats.length,
-        online: sensorsWithStats.filter((s: any) => s.status === 'online').length,
-        warning: sensorsWithStats.filter((s: any) => s.status === 'warning').length,
-        offline: sensorsWithStats.filter((s: any) => s.status === 'offline').length,
-        inactive: sensorsWithStats.filter((s: any) => !s.is_active).length,
-        active_alerts: sensorsWithStats.reduce((sum: any, s: any) => sum + s.alert_count, 0)
-      },
-      timestamp: new Date().toISOString()
+      sensor: {
+        id: sensor.id,
+        sensor_id_local: sensor.sensor_id_local,
+        property_measured: sensor.property_measured,
+        installation_date: sensor.installation_date,
+        location_details: sensor.location_details,
+        status: sensor.status,
+        created_at: sensor.created_at,
+        environment: sensor.environments,
+        site: environment.sites
+      }
     })
     return addRateLimitHeaders(response, rateLimitResult)
 
   } catch (error) {
-    console.error('Sensors API error:', error)
-    const response = NextResponse.json(
-      { error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } },
-      { status: 500 }
-    )
-    // rateLimitResult is now available from outer scope
-    return rateLimitResult 
-      ? addRateLimitHeaders(response, rateLimitResult)
-      : response
+    console.error('Sensors POST endpoint error:', error)
+
+    let statusCode = 500
+    let errorMessage = 'Failed to create sensor'
+
+    if (error instanceof z.ZodError) {
+      statusCode = 400
+      errorMessage = 'Invalid sensor data'
+    }
+
+    const errorResponse = {
+      error: {
+        code: 'SENSOR_CREATION_FAILED',
+        message: errorMessage,
+        requestId: crypto.randomUUID()
+      }
+    }
+
+    return NextResponse.json(errorResponse, { status: statusCode })
   }
 }
+
+export const dynamic = 'force-dynamic'

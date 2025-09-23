@@ -60,10 +60,7 @@ export async function GET(
         name,
         environment_type,
         description,
-        created_at,
-        sensors:sensors(count),
-        alerts:alerts(count, level, status),
-        readings:readings(value)
+        created_at
       `)
       .eq('site_id', siteId)
       .order('created_at', { ascending: false })
@@ -79,32 +76,60 @@ export async function GET(
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Process environments data
-    const environments = environmentsData?.map(env => {
-      const sensors = (env.sensors as any[]) || []
-      const alerts = (env.alerts as any[]) || []
-      const readings = (env.readings as any[]) || []
-      
-      const activeAlerts = alerts.filter(alert => 
-        alert.status === 'open' || alert.status === 'acknowledged'
-      ).length
+    // Get additional data for each environment
+    const environments = await Promise.all(
+      (environmentsData || []).map(async (env) => {
+        // Get sensor count
+        const { count: sensorCount } = await supabase
+          .from('sensors')
+          .select('*', { count: 'exact', head: true })
+          .eq('environment_id', env.id)
 
-      // Calculate average temperature from recent readings
-      const avgTemperature = readings.length > 0 
-        ? readings.reduce((sum, reading) => sum + reading.value, 0) / readings.length
-        : null
+        // Get active alerts count
+        const { count: activeAlertsCount } = await supabase
+          .from('alerts')
+          .select('*', { count: 'exact', head: true })
+          .eq('environment_id', env.id)
+          .in('status', ['open', 'acknowledged'])
 
-      return {
-        id: env.id,
-        name: env.name,
-        environment_type: env.environment_type,
-        description: env.description,
-        sensor_count: sensors.length,
-        active_alerts: activeAlerts,
-        avg_temperature: avgTemperature,
-        created_at: env.created_at
-      }
-    }) || []
+        // Get recent readings for average temperature (last 24 hours)
+        const yesterday = new Date()
+        yesterday.setHours(yesterday.getHours() - 24)
+
+        // First get sensor IDs for this environment
+        const { data: sensors } = await supabase
+          .from('sensors')
+          .select('id')
+          .eq('environment_id', env.id)
+
+        let avgTemperature = null
+        if (sensors && sensors.length > 0) {
+          const sensorIds = sensors.map(s => s.id)
+
+          const { data: readings } = await supabase
+            .from('readings')
+            .select('value')
+            .in('sensor_id', sensorIds)
+            .gte('ts', yesterday.toISOString())
+            .limit(100)
+
+          avgTemperature = readings && readings.length > 0
+            ? readings.reduce((sum, reading) => sum + reading.value, 0) / readings.length
+            : null
+        }
+
+        return {
+          id: env.id,
+          name: env.name,
+          environment_type: env.environment_type,
+          description: env.description,
+          sensor_count: sensorCount || 0,
+          active_alerts: activeAlertsCount || 0,
+          avg_temperature: avgTemperature,
+          created_at: env.created_at
+        }
+      })
+    )
 
     // Get recent alerts for this site
     const { data: alertsData, error: alertsError } = await supabase

@@ -16,10 +16,35 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext 
   try {
     // Use unified server client for cookie-based authentication
     const supabase = await createServerSupabaseClient()
-    
-    // Get the user from the session
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
+    // First try cookie-based authentication
+    let { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    // If cookie auth fails, try Authorization header (Bearer token)
+    if (authError || !user) {
+      const authHeader = request.headers.get('authorization')
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.substring(7) // Remove 'Bearer ' prefix
+        console.debug('Auth - trying Bearer token authentication')
+
+        // Create a new client with the token
+        const { createClient } = await import('@supabase/supabase-js')
+        const tempSupabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        )
+
+        const { data: tokenData, error: tokenError } = await tempSupabase.auth.getUser(token)
+        if (!tokenError && tokenData.user) {
+          user = tokenData.user
+          authError = null
+          console.debug('Auth - Bearer token authentication successful')
+        } else {
+          console.debug('Auth - Bearer token authentication failed:', tokenError)
+        }
+      }
+    }
+
     if (authError || !user) {
       return null
     }

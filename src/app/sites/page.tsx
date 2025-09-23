@@ -27,16 +27,16 @@ interface Site {
 }
 
 export default function SitesPage() {
-  const { user, profile, isLoading: authLoading } = useAuthStore()
+  const { user, profile, isLoading: authLoading, isInitialized } = useAuthStore()
   const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (isInitialized && !authLoading && !user) {
       router.push('/login')
     }
-  }, [user, authLoading, router])
+  }, [user, authLoading, isInitialized, router])
 
   // Fetch sites data
   const { data: sitesData, error, isLoading, mutate } = useSWR('/api/sites', fetcher, {
@@ -157,6 +157,7 @@ export default function SitesPage() {
                   site={site}
                   userRole={profile?.role}
                   onUpdate={() => mutate()}
+                  onViewDetails={(siteId) => router.push(`/sites/${siteId}`)}
                 />
               ))}
             </div>
@@ -227,9 +228,10 @@ interface SiteCardProps {
   site: Site
   userRole?: string
   onUpdate: () => void
+  onViewDetails: (siteId: string) => void
 }
 
-const SiteCard: React.FC<SiteCardProps> = ({ site, userRole, onUpdate }) => {
+const SiteCard: React.FC<SiteCardProps> = ({ site, userRole, onUpdate, onViewDetails }) => {
   const getAlertStatus = (count: number) => {
     if (count === 0) return 'text-green-600 bg-green-100'
     if (count <= 2) return 'text-yellow-600 bg-yellow-100'
@@ -271,7 +273,10 @@ const SiteCard: React.FC<SiteCardProps> = ({ site, userRole, onUpdate }) => {
       </div>
 
       <div className="flex space-x-2">
-        <button className="flex-1 text-sm bg-blue-50 text-blue-600 px-3 py-2 rounded-md hover:bg-blue-100 transition-colors">
+        <button
+          onClick={() => onViewDetails(site.id)}
+          className="flex-1 text-sm bg-blue-50 text-blue-600 px-3 py-2 rounded-md hover:bg-blue-100 transition-colors"
+        >
           View Details
         </button>
         {(userRole === 'master' || userRole === 'admin') && (
@@ -283,7 +288,11 @@ const SiteCard: React.FC<SiteCardProps> = ({ site, userRole, onUpdate }) => {
 
       <div className="mt-3 pt-3 border-t border-gray-100">
         <div className="text-xs text-gray-500">
-          Created {new Date(site.created_at).toLocaleDateString()}
+          Created {new Date(site.created_at).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+          })}
         </div>
       </div>
     </div>

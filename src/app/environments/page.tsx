@@ -49,11 +49,16 @@ export default function EnvironmentsPage() {
     revalidateOnFocus: true
   })
 
+  // Fetch sites data for filter dropdown
+  const { data: sitesData } = useSWR('/api/sites', fetcher, {
+    revalidateOnFocus: true
+  })
+
   const environments: Environment[] = environmentsData?.environments || []
-  const sites = Array.from(new Set(environments.map(env => env.site_id)))
-    .map(siteId => environments.find(env => env.site_id === siteId))
-    .filter(env => env)
-    .map(env => ({ id: env!.site_id, name: env!.site_name }))
+  const sites = sitesData?.sites?.map((site: any) => ({
+    id: site.id,
+    name: site.site_name
+  })) || []
 
   // Filter environments
   const filteredEnvironments = environments.filter(env => {
@@ -225,7 +230,7 @@ export default function EnvironmentsPage() {
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 >
                   <option value="all">All Sites</option>
-                  {sites.map((site) => (
+                  {sites.map((site: any) => (
                     <option key={site.id} value={site.id}>
                       {site.name}
                     </option>

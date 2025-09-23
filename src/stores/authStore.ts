@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { supabase } from '@/lib/supabase-client'
+import { supabase } from '@/lib/supabase'
 import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js'
 
 export interface UserProfile {

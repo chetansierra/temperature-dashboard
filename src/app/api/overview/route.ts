@@ -24,10 +24,79 @@ export async function GET(request: NextRequest) {
     // Use the unified server client for cookie-based auth
     const supabase = await createServerSupabaseClient()
 
-    // Get simple counts
-    const sitesCount = await supabase.from('sites').select('id', { count: 'exact' })
-    const sensorsCount = await supabase.from('sensors').select('id', { count: 'exact' })
-    const alertsCount = await supabase.from('alerts').select('id', { count: 'exact' })
+    // Get counts
+    const [sitesResult, sensorsResult, alertsResult] = await Promise.all([
+      supabase.from('sites').select('id', { count: 'exact' }),
+      supabase.from('sensors').select('id', { count: 'exact' }),
+      supabase.from('alerts').select('id', { count: 'exact' })
+    ])
+
+    // Get recent alerts (last 5)
+    const { data: recentAlerts } = await supabase
+      .from('alerts')
+      .select(`
+        id,
+        message,
+        level,
+        status,
+        opened_at,
+        site:sites!site_id (
+          name
+        ),
+        environment:environments!environment_id (
+          name
+        )
+      `)
+      .order('opened_at', { ascending: false })
+      .limit(5)
+
+    // Get sensor health (current readings for last 5 sensors)
+    const { data: sensors } = await supabase
+      .from('sensors')
+      .select(`
+        id,
+        name,
+        site:sites!inner(name),
+        environment:environments!inner(name)
+      `)
+      .limit(5)
+
+    // Get current readings for these sensors
+    const sensorIds = sensors?.map(s => s.id) || []
+    const { data: currentReadings } = sensorIds.length > 0 ? await supabase
+      .from('readings')
+      .select('sensor_id, temperature_c, ts')
+      .in('sensor_id', sensorIds)
+      .order('ts', { ascending: false })
+      .limit(sensorIds.length) : { data: [] }
+
+    // Group readings by sensor
+    const readingsBySensor = new Map()
+    currentReadings?.forEach(reading => {
+      if (!readingsBySensor.has(reading.sensor_id)) {
+        readingsBySensor.set(reading.sensor_id, reading)
+      }
+    })
+
+    // Build sensor health data
+    const sensorHealth = sensors?.map(sensor => {
+      const latestReading = readingsBySensor.get(sensor.id)
+      return {
+        sensor_id: sensor.id,
+        sensor_name: sensor.name || `Sensor ${sensor.id.slice(-8)}`,
+        site_name: sensor.site?.[0]?.name || 'Unknown Site',
+        environment_name: sensor.environment?.[0]?.name || 'Unknown Environment',
+        current_value: latestReading?.temperature_c || null,
+        last_reading: latestReading?.ts || null,
+        status: latestReading ? 'active' : 'inactive'
+      }
+    }) || []
+
+    // Count critical alerts
+    const { count: criticalAlertsCount } = await supabase
+      .from('alerts')
+      .select('id', { count: 'exact' })
+      .eq('level', 'high')
 
     const overviewData = {
       tenant: {
@@ -35,13 +104,21 @@ export async function GET(request: NextRequest) {
         name: 'Acme Foods Ltd.'
       },
       stats: {
-        total_sites: sitesCount.count || 0,
-        total_sensors: sensorsCount.count || 0,
-        active_alerts: alertsCount.count || 0,
-        critical_alerts: 1
+        total_sites: sitesResult.count || 0,
+        total_sensors: sensorsResult.count || 0,
+        active_alerts: alertsResult.count || 0,
+        critical_alerts: criticalAlertsCount || 0
       },
-      recent_alerts: [],
-      sensor_health: []
+      recent_alerts: recentAlerts?.map(alert => ({
+        id: alert.id,
+        message: alert.message || 'Temperature alert',
+        level: alert.level || 'medium',
+        status: alert.status || 'open',
+        opened_at: alert.opened_at,
+        site_name: alert.site?.[0]?.name || 'Unknown Site',
+        environment_name: alert.environment?.[0]?.name || 'Unknown Environment'
+      })) || [],
+      sensor_health: sensorHealth
     }
 
     const response = NextResponse.json(overviewData, { status: 200 })

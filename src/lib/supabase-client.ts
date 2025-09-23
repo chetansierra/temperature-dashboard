@@ -59,5 +59,5 @@ export function createClient() {
   })
 }
 
-// Export the client instance for compatibility
-export const supabase = createClient()
+// Note: No default client instance exported to prevent multiple client instances
+// Use createClient() function or import from @/lib/supabase for the main client

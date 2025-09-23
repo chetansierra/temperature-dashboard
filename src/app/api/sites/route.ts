@@ -61,21 +61,83 @@ export async function GET(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
+    // Get counts for each site
+    const siteIds = sitesData?.map(site => site.id) || []
+
+    // Get environment counts per site
+    const { data: envCounts } = siteIds.length > 0 ? await supabase
+      .from('environments')
+      .select('site_id')
+      .in('site_id', siteIds) : { data: [] }
+
+    const envCountMap = new Map()
+    envCounts?.forEach(env => {
+      envCountMap.set(env.site_id, (envCountMap.get(env.site_id) || 0) + 1)
+    })
+
+    // Get sensor counts per site
+    const { data: sensorCounts } = siteIds.length > 0 ? await supabase
+      .from('sensors')
+      .select('site_id')
+      .in('site_id', siteIds) : { data: [] }
+
+    const sensorCountMap = new Map()
+    sensorCounts?.forEach(sensor => {
+      sensorCountMap.set(sensor.site_id, (sensorCountMap.get(sensor.site_id) || 0) + 1)
+    })
+
+    // Get active alerts counts per site
+    const { data: alertCounts } = siteIds.length > 0 ? await supabase
+      .from('alerts')
+      .select('site_id')
+      .in('site_id', siteIds)
+      .eq('status', 'open') : { data: [] }
+
+    const alertCountMap = new Map()
+    alertCounts?.forEach(alert => {
+      alertCountMap.set(alert.site_id, (alertCountMap.get(alert.site_id) || 0) + 1)
+    })
+
     // Process sites data to match schema
-    const sites = (sitesData || []).map((site: any) => ({
-      id: site.id,
-      tenant_id: site.tenant_id,
-      site_name: site.name, // Map 'name' field to 'site_name'
-      site_code: site.site_code || `SITE-${site.name?.replace(/\s+/g, '-').toUpperCase().slice(0, 8)}`, // Generate from name if missing
-      location: site.location,
-      timezone: site.timezone,
-      created_at: new Date(site.created_at).toISOString(), // Convert to ISO format with Z
-      updated_at: new Date(site.updated_at).toISOString(), // Convert to ISO format with Z
-      environment_count: 0, // Will get this later with proper joins
-      sensor_count: 0, // Will get this later with proper joins
-      active_alerts: 0, // Will get this later with proper joins
-      health_status: 'healthy' as const // Will calculate this based on alerts later
-    }))
+    const sites = (sitesData || []).map((site: any) => {
+      const envCount = envCountMap.get(site.id) || 0
+      const sensorCount = sensorCountMap.get(site.id) || 0
+      const activeAlerts = alertCountMap.get(site.id) || 0
+
+      // Determine health status based on alerts
+      let healthStatus: 'healthy' | 'warning' | 'critical' = 'healthy'
+      if (activeAlerts > 5) {
+        healthStatus = 'critical'
+      } else if (activeAlerts > 0) {
+        healthStatus = 'warning'
+      }
+
+      const processedSite = {
+        id: site.id,
+        tenant_id: site.tenant_id,
+        site_name: site.name, // Map 'name' field to 'site_name'
+        site_code: site.site_code || `SITE-${site.name?.replace(/\s+/g, '-').toUpperCase().slice(0, 8)}`, // Generate from name if missing
+        location: site.location,
+        timezone: site.timezone,
+        created_at: new Date(site.created_at).toISOString(), // Convert to ISO format with Z
+        updated_at: new Date(site.updated_at).toISOString(), // Convert to ISO format with Z
+        environment_count: envCount,
+        sensor_count: sensorCount,
+        active_alerts: activeAlerts,
+        health_status: healthStatus
+      }
+
+      console.log(`Processed site ${site.name}:`, {
+        envCount,
+        sensorCount,
+        activeAlerts,
+        healthStatus
+      })
+
+      return processedSite
+    })
+
+    console.log('Final sites response:', sites)
 
     const responseData = {
       sites,

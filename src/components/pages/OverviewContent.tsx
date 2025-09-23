@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import KPITile from '@/components/ui/KPITile'
 import Chart from '@/components/ui/Chart'
@@ -27,10 +28,15 @@ const fetcher = async (url: string) => {
 }
 
 export const OverviewContent: React.FC = () => {
+  const router = useRouter()
+
   // State for chart data
   const [chartData, setChartData] = useState<any[]>([])
   const [chartLoading, setChartLoading] = useState(true)
   const [chartError, setChartError] = useState<string | null>(null)
+
+  // State for time range selection
+  const [timeRange, setTimeRange] = useState<string>('24h')
 
   // Fetch overview data
   const { data: overviewData, error, isLoading } = useSWR('/api/overview', fetcher, {
@@ -41,7 +47,7 @@ export const OverviewContent: React.FC = () => {
   // Fetch sensors for chart data
   const { data: sensorsData } = useSWR('/api/sensors', fetcher)
 
-  // Fetch chart data when sensors are available
+  // Fetch chart data when sensors are available or time range changes
   React.useEffect(() => {
     const availableSensors = Array.isArray(sensorsData?.sensors)
       ? sensorsData.sensors
@@ -57,7 +63,7 @@ export const OverviewContent: React.FC = () => {
     if (availableSensors.length > 0) {
       fetchChartData(availableSensors.slice(0, 3)) // Show first 3 sensors
     }
-  }, [sensorsData])
+  }, [sensorsData, timeRange])
 
   const fetchChartData = async (sensors: any[]) => {
     if (!sensors || sensors.length === 0) {
@@ -71,7 +77,24 @@ export const OverviewContent: React.FC = () => {
 
       const endTime = new Date()
       const startTime = new Date()
-      startTime.setHours(endTime.getHours() - 6) // Last 6 hours
+
+      // Calculate start time based on selected range
+      switch (timeRange) {
+        case '6h':
+          startTime.setHours(endTime.getHours() - 6)
+          break
+        case '12h':
+          startTime.setHours(endTime.getHours() - 12)
+          break
+        case '24h':
+          startTime.setHours(endTime.getHours() - 24)
+          break
+        case '1w':
+          startTime.setDate(endTime.getDate() - 7)
+          break
+        default:
+          startTime.setHours(endTime.getHours() - 24) // Default to 24 hours
+      }
 
       // Get fresh session and validate token
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
@@ -236,7 +259,23 @@ export const OverviewContent: React.FC = () => {
 
       {/* Temperature Trends Chart */}
       <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Temperature Trends (Last 6 Hours)</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Temperature Trends</h2>
+          <div className="flex items-center space-x-2">
+            <label htmlFor="timeRange" className="text-sm text-gray-600">Time Range:</label>
+            <select
+              id="timeRange"
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+              className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="6h">Last 6 Hours</option>
+              <option value="12h">Last 12 Hours</option>
+              <option value="24h">Last 24 Hours</option>
+              <option value="1w">Last Week</option>
+            </select>
+          </div>
+        </div>
         
         {chartLoading ? (
           <div className="flex items-center justify-center h-64">
@@ -378,17 +417,26 @@ export const OverviewContent: React.FC = () => {
       <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <button className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <button
+            onClick={() => router.push('/sites')}
+            className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
             <span className="mr-2">🏢</span>
             View All Sites
           </button>
-          <button className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <button
+            onClick={() => router.push('/alerts')}
+            className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
             <span className="mr-2">🚨</span>
             Manage Alerts
           </button>
-          <button className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <button
+            onClick={() => router.push('/analytics')}
+            className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
             <span className="mr-2">📊</span>
-            View Reports
+            View Analytics
           </button>
         </div>
       </div>
