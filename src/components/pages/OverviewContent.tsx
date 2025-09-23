@@ -48,6 +48,9 @@ export const OverviewContent: React.FC = () => {
   const { data: sensorsData } = useSWR('/api/sensors', fetcher)
 
   // Fetch chart data when sensors are available or time range changes
+  // Add debouncing to prevent excessive API calls
+  const [chartFetchTimeout, setChartFetchTimeout] = React.useState<NodeJS.Timeout | null>(null)
+
   React.useEffect(() => {
     const availableSensors = Array.isArray(sensorsData?.sensors)
       ? sensorsData.sensors
@@ -60,8 +63,25 @@ export const OverviewContent: React.FC = () => {
       extractedCount: availableSensors.length
     })
 
-    if (availableSensors.length > 0) {
-      fetchChartData(availableSensors.slice(0, 3)) // Show first 3 sensors
+    // Clear existing timeout
+    if (chartFetchTimeout) {
+      clearTimeout(chartFetchTimeout)
+    }
+
+    // Debounce chart data fetching to prevent rate limiting
+    const timeout = setTimeout(() => {
+      if (availableSensors.length > 0) {
+        fetchChartData(availableSensors.slice(0, 3)) // Show first 3 sensors
+      }
+    }, 2000) // Wait 2 seconds before fetching
+
+    setChartFetchTimeout(timeout)
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (timeout) {
+        clearTimeout(timeout)
+      }
     }
   }, [sensorsData, timeRange])
 

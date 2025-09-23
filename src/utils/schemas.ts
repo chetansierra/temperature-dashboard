@@ -87,8 +87,7 @@ export const SiteSchema = z.object({
   id: UUIDSchema,
   tenant_id: UUIDSchema,
   site_name: z.string(),
-  site_code: z.string(),
-  location: z.any().nullable(),
+  location: z.string().nullable(),
   timezone: z.string(),
   created_at: TimestampSchema,
   updated_at: TimestampSchema

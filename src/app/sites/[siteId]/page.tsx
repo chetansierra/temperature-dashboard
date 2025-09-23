@@ -29,7 +29,8 @@ interface Environment {
   name: string
   description: string | null
   created_at: string
-  sensor_count: number
+  sensors_count: number
+  active_sensors_count: number
 }
 
 interface Site {
@@ -247,7 +248,7 @@ export default function SiteDetailPage() {
                   <div>
                     <p className="text-sm text-gray-600">Total Sensors</p>
                     <p className="text-lg font-semibold text-gray-900">
-                      {environments.reduce((sum, env) => sum + (env.sensor_count || 0), 0)}
+                      {environments.reduce((sum, env) => sum + (env.sensors_count || 0), 0)}
                     </p>
                   </div>
                   <CheckCircle className="w-8 h-8 text-purple-500" />
@@ -316,7 +317,15 @@ export default function SiteDetailPage() {
                           <p className="text-sm text-gray-600 mb-2">{environment.description}</p>
                         )}
                         <div className="flex items-center space-x-4 text-sm text-gray-500">
-                          <span>{environment.sensor_count || 0} sensors</span>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-green-600 font-medium">{environment.active_sensors_count || 0} healthy</span>
+                            {(environment.sensors_count - environment.active_sensors_count) > 0 && (
+                              <>
+                                <span>•</span>
+                                <span className="text-red-600 font-medium">{environment.sensors_count - environment.active_sensors_count} unhealthy</span>
+                              </>
+                            )}
+                          </div>
                           <span>•</span>
                           <span>Created {new Date(environment.created_at).toLocaleDateString()}</span>
                         </div>

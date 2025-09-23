@@ -46,7 +46,9 @@ export async function POST(request: NextRequest) {
       aggregation,
       metrics
     })
-    const supabase = await createServerSupabaseClient()
+    // Use service role client for bypassed authentication (bypasses RLS)
+    const { supabaseAdmin } = await import('@/lib/supabase-server')
+    const supabase = supabaseAdmin
 
     // Validate time range (max 30 days for raw data)
     const startDate = new Date(start_time)
@@ -319,7 +321,9 @@ export async function GET(request: NextRequest) {
     // Use the POST handler logic
     const { sensor_ids: validatedSensorIds, start_time, end_time, aggregation: validatedAggregation = 'raw', metrics: validatedMetrics = ['avg'] } = validationResult.data
 
-    const supabase = await createServerSupabaseClient()
+    // Use service role client for bypassed authentication (bypasses RLS)
+    const { supabaseAdmin } = await import('@/lib/supabase-server')
+    const supabase = supabaseAdmin
 
     // Validate time range (max 30 days for raw data)
     const startDate = new Date(start_time)

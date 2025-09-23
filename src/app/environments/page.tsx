@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { AllRoles } from '@/components/auth/RoleGuard'
 
+
 // Fetcher function for SWR
 const fetcher = (url: string) => fetch(url, {
   credentials: 'include'
@@ -323,6 +324,7 @@ interface EnvironmentCardProps {
 }
 
 const EnvironmentCard: React.FC<EnvironmentCardProps> = ({ environment, userRole, onUpdate }) => {
+  const router = useRouter()
   const getTemperatureStatus = (env: Environment) => {
     if (!env.last_reading_at) return { color: 'text-gray-500 bg-gray-100', status: 'Offline', icon: '❌' }
     if (env.alert_count > 0) return { color: 'text-red-600 bg-red-100', status: 'Alert', icon: '🚨' }
@@ -413,11 +415,17 @@ const EnvironmentCard: React.FC<EnvironmentCardProps> = ({ environment, userRole
 
       {/* Actions */}
       <div className="flex space-x-2">
-        <button className="flex-1 text-sm bg-blue-50 text-blue-600 px-3 py-2 rounded-md hover:bg-blue-100 transition-colors">
+        <button
+          onClick={() => router.push('/sensors')}
+          className="flex-1 text-sm bg-blue-50 text-blue-600 px-3 py-2 rounded-md hover:bg-blue-100 transition-colors cursor-pointer"
+        >
           View Sensors
         </button>
         {environment.alert_count > 0 && (
-          <button className="text-sm bg-red-50 text-red-600 px-3 py-2 rounded-md hover:bg-red-100 transition-colors">
+          <button
+            onClick={() => router.push('/alerts')}
+            className="text-sm bg-red-50 text-red-600 px-3 py-2 rounded-md hover:bg-red-100 transition-colors cursor-pointer"
+          >
             View Alerts
           </button>
         )}

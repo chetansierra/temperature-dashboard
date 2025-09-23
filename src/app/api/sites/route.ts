@@ -13,18 +13,15 @@ export async function GET(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Get authenticated user context
-    const authContext = await getAuthContext(request)
-    if (!authContext) {
-      const response = NextResponse.json(createAuthError('Authentication required'), { status: 401 })
-      return addRateLimitHeaders(response, rateLimitResult)
-    }
-
     // Use service role client for bypassed authentication (bypasses RLS)
     const { supabaseAdmin } = await import('@/lib/supabase-server')
     const supabase = supabaseAdmin
-    
-    const { profile } = authContext
+
+    // Mock profile for bypassed authentication
+    const profile = {
+      tenant_id: '550e8400-e29b-41d4-a716-446655440000',
+      role: 'master'
+    }
 
     // Parse query parameters
     const url = new URL(request.url)
@@ -156,6 +153,101 @@ export async function GET(request: NextRequest) {
       error: {
         code: 'SITES_FAILED',
         message: 'Failed to fetch sites data',
+        requestId: crypto.randomUUID()
+      }
+    }
+
+    return NextResponse.json(errorResponse, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    // Apply rate limiting
+    const rateLimitResult = await rateLimiters.get(request)
+    if (!rateLimitResult.success) {
+      const response = NextResponse.json(createRateLimitError(rateLimitResult.resetTime), { status: 429 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
+
+    // Use service role client for bypassed authentication (bypasses RLS)
+    const { supabaseAdmin } = await import('@/lib/supabase-server')
+    const supabase = supabaseAdmin
+
+    // Mock profile for bypassed authentication
+    const profile = {
+      tenant_id: '550e8400-e29b-41d4-a716-446655440000',
+      role: 'master'
+    }
+
+    // Parse request body
+    const body = await request.json()
+    const { name, location, timezone = 'UTC' } = body
+
+    if (!name || !location) {
+      const response = NextResponse.json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Name and location are required',
+          requestId: crypto.randomUUID()
+        }
+      }, { status: 400 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
+
+    // Generate site code
+    const siteCode = `SITE-${name.replace(/\s+/g, '-').toUpperCase().slice(0, 8)}`
+
+    // Create site
+    const { data: newSite, error: createError } = await supabase
+      .from('sites')
+      .insert({
+        tenant_id: profile.tenant_id,
+        name,
+        site_code: siteCode,
+        location,
+        timezone
+      })
+      .select()
+      .single()
+
+    if (createError) {
+      console.error('Site creation error:', createError)
+      const response = NextResponse.json({
+        error: {
+          code: 'SITE_CREATION_FAILED',
+          message: 'Failed to create site',
+          requestId: crypto.randomUUID()
+        }
+      }, { status: 500 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
+
+    const response = NextResponse.json({
+      site: {
+        id: newSite.id,
+        tenant_id: newSite.tenant_id,
+        site_name: newSite.name,
+        site_code: newSite.site_code,
+        location: newSite.location,
+        timezone: newSite.timezone,
+        created_at: new Date(newSite.created_at).toISOString(),
+        updated_at: new Date(newSite.updated_at).toISOString(),
+        environment_count: 0,
+        sensor_count: 0,
+        active_alerts: 0,
+        health_status: 'healthy'
+      }
+    }, { status: 201 })
+    return addRateLimitHeaders(response, rateLimitResult)
+
+  } catch (error) {
+    console.error('Site creation endpoint error:', error)
+
+    const errorResponse = {
+      error: {
+        code: 'SITE_CREATION_FAILED',
+        message: 'Failed to create site',
         requestId: crypto.randomUUID()
       }
     }

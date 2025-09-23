@@ -31,6 +31,7 @@ export default function SitesPage() {
   const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [editingSite, setEditingSite] = useState<Site | null>(null)
 
   useEffect(() => {
     if (isInitialized && !authLoading && !user) {
@@ -158,6 +159,7 @@ export default function SitesPage() {
                   userRole={profile?.role}
                   onUpdate={() => mutate()}
                   onViewDetails={(siteId) => router.push(`/sites/${siteId}`)}
+                  onEdit={(site) => setEditingSite(site)}
                 />
               ))}
             </div>
@@ -218,8 +220,156 @@ export default function SitesPage() {
             }}
           />
         )}
+
+        {/* Edit Site Modal */}
+        {editingSite && (
+          <EditSiteModal
+            site={editingSite}
+            onClose={() => setEditingSite(null)}
+            onSuccess={() => {
+              setEditingSite(null)
+              mutate()
+            }}
+          />
+        )}
       </DashboardLayout>
     </AllRoles>
+  )
+}
+
+// Edit Site Modal Component
+interface EditSiteModalProps {
+  site: Site
+  onClose: () => void
+  onSuccess: () => void
+}
+
+const EditSiteModal: React.FC<EditSiteModalProps> = ({ site, onClose, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    name: site.site_name,
+    location: site.location,
+    timezone: site.timezone
+  })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+    setError('')
+
+    try {
+      const response = await fetch(`/api/sites/${site.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify(formData)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error?.message || 'Failed to update site')
+      }
+
+      onSuccess()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+      <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Edit Site</h3>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 focus:outline-none"
+            >
+              <span className="text-xl">×</span>
+            </button>
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md text-sm">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="edit-name" className="block text-sm font-medium text-gray-700 mb-1">
+                Site Name *
+              </label>
+              <input
+                id="edit-name"
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Mumbai Warehouse"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="edit-location" className="block text-sm font-medium text-gray-700 mb-1">
+                Location *
+              </label>
+              <input
+                id="edit-location"
+                type="text"
+                required
+                value={formData.location}
+                onChange={(e) => setFormData({...formData, location: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Mumbai, India"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="edit-timezone" className="block text-sm font-medium text-gray-700 mb-1">
+                Timezone
+              </label>
+              <select
+                id="edit-timezone"
+                value={formData.timezone}
+                onChange={(e) => setFormData({...formData, timezone: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="UTC">UTC</option>
+                <option value="Asia/Kolkata">Asia/Kolkata</option>
+                <option value="America/New_York">America/New_York</option>
+                <option value="America/Los_Angeles">America/Los_Angeles</option>
+                <option value="Europe/London">Europe/London</option>
+              </select>
+            </div>
+
+            <div className="flex space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex-1 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? 'Updating...' : 'Update Site'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -229,9 +379,10 @@ interface SiteCardProps {
   userRole?: string
   onUpdate: () => void
   onViewDetails: (siteId: string) => void
+  onEdit: (site: Site) => void
 }
 
-const SiteCard: React.FC<SiteCardProps> = ({ site, userRole, onUpdate, onViewDetails }) => {
+const SiteCard: React.FC<SiteCardProps> = ({ site, userRole, onUpdate, onViewDetails, onEdit }) => {
   const getAlertStatus = (count: number) => {
     if (count === 0) return 'text-green-600 bg-green-100'
     if (count <= 2) return 'text-yellow-600 bg-yellow-100'
@@ -280,7 +431,10 @@ const SiteCard: React.FC<SiteCardProps> = ({ site, userRole, onUpdate, onViewDet
           View Details
         </button>
         {(userRole === 'master' || userRole === 'admin') && (
-          <button className="text-sm bg-gray-50 text-gray-600 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors">
+          <button
+            onClick={() => onEdit(site)}
+            className="text-sm bg-gray-50 text-gray-600 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+          >
             Edit
           </button>
         )}

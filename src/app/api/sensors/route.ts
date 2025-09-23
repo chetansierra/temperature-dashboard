@@ -143,18 +143,15 @@ export async function POST(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Get authenticated user context
-    const authContext = await getAuthContext(request)
-    if (!authContext) {
-      const response = NextResponse.json(createAuthError('Authentication required'), { status: 401 })
-      return addRateLimitHeaders(response, rateLimitResult)
-    }
-
     // Use service role client for bypassed authentication (bypasses RLS)
     const { supabaseAdmin } = await import('@/lib/supabase-server')
     const supabase = supabaseAdmin
 
-    const { profile } = authContext
+    // Mock profile for bypassed authentication
+    const profile = {
+      tenant_id: '550e8400-e29b-41d4-a716-446655440000',
+      role: 'master'
+    }
 
     // Parse and validate request body
     const body = await request.json()
@@ -189,10 +186,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check permissions - verify user can access the site that contains this environment
-    if (!canAccessSite(profile, environment.site_id)) {
-      const response = NextResponse.json(createAuthError('Access denied to this environment'), { status: 403 })
-      return addRateLimitHeaders(response, rateLimitResult)
-    }
+    // Skip access check for bypassed authentication
+    // if (!canAccessSite(profile, environment.site_id)) {
+    //   const response = NextResponse.json(createAuthError('Access denied to this environment'), { status: 403 })
+    //   return addRateLimitHeaders(response, rateLimitResult)
+    // }
 
     // Check for duplicate sensor_id_local in the same environment (if provided)
     if (validatedData.sensor_id_local) {

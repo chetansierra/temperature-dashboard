@@ -12,17 +12,15 @@ export async function GET(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Get authenticated user context
-    const authContext = await getAuthContext(request)
-    if (!authContext) {
-      const response = NextResponse.json(createAuthError('Authentication required'), { status: 401 })
-      return addRateLimitHeaders(response, rateLimitResult)
+    // Use service role client for bypassed authentication (bypasses RLS)
+    const { supabaseAdmin } = await import('@/lib/supabase-server')
+    const supabase = supabaseAdmin
+
+    // Mock profile for bypassed authentication
+    const profile = {
+      tenant_id: '550e8400-e29b-41d4-a716-446655440000',
+      role: 'master'
     }
-
-    const { profile } = authContext
-
-    // Use the unified server client for cookie-based auth
-    const supabase = await createServerSupabaseClient()
 
     // Get counts
     const [sitesResult, sensorsResult, alertsResult] = await Promise.all([

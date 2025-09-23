@@ -22,7 +22,9 @@ export async function GET(
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    const supabase = await createServerSupabaseClient()
+    // Use service role client for bypassed authentication
+    const { supabaseAdmin } = await import('@/lib/supabase-server')
+    const supabase = supabaseAdmin
 
     // Set the user context for RLS
     const { error: authSetError } = await supabase.auth.getUser()

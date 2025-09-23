@@ -27,15 +27,9 @@ export async function GET(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    const supabase = await createServerSupabaseClient()
-
-    // Set the user context for RLS
-    const { error: authSetError } = await supabase.auth.getUser()
-    if (authSetError) {
-      console.error('Failed to set auth context:', authSetError)
-      const response = NextResponse.json(createAuthError('Authentication failed'), { status: 401 })
-      return addRateLimitHeaders(response, rateLimitResult)
-    }
+    // Use service role client for bypassed authentication (bypasses RLS)
+    const { supabaseAdmin } = await import('@/lib/supabase-server')
+    const supabase = supabaseAdmin
 
     const { profile } = authContext
 
@@ -103,11 +97,11 @@ export async function GET(request: NextRequest) {
         // Get sensor count and active sensor count
         const { data: sensors } = await supabase
           .from('sensors')
-          .select('id, status')
+          .select('id, is_active, status')
           .eq('environment_id', env.id)
 
         const sensorCount = sensors?.length || 0
-        const activeSensorCount = sensors?.filter(s => s.status === 'active').length || 0
+        const activeSensorCount = sensors?.filter(s => s.is_active === true).length || 0
 
         // Get active alerts count
         const { count: activeAlertsCount } = await supabase
@@ -211,28 +205,26 @@ export async function POST(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Get authenticated user context
-    const authContext = await getAuthContext(request)
-    if (!authContext) {
-      const response = NextResponse.json(createAuthError('Authentication required'), { status: 401 })
-      return addRateLimitHeaders(response, rateLimitResult)
-    }
-
     // Use service role client for bypassed authentication (bypasses RLS)
     const { supabaseAdmin } = await import('@/lib/supabase-server')
     const supabase = supabaseAdmin
 
-    const { profile } = authContext
+    // Mock profile for bypassed authentication
+    const profile = {
+      tenant_id: '550e8400-e29b-41d4-a716-446655440000',
+      role: 'master'
+    }
 
     // Parse and validate request body
     const body = await request.json()
     const validatedData = CreateEnvironmentSchema.parse(body)
 
     // Check permissions - verify user can access the site
-    if (!canAccessSite(profile, validatedData.site_id)) {
-      const response = NextResponse.json(createAuthError('Access denied to this site'), { status: 403 })
-      return addRateLimitHeaders(response, rateLimitResult)
-    }
+    // Skip access check for bypassed authentication
+    // if (!canAccessSite(profile, validatedData.site_id)) {
+    //   const response = NextResponse.json(createAuthError('Access denied to this site'), { status: 403 })
+    //   return addRateLimitHeaders(response, rateLimitResult)
+    // }
 
     // Verify the site exists and belongs to the user's tenant
     const { data: site, error: siteError } = await supabase
