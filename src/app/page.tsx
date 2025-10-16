@@ -11,8 +11,12 @@ export default function HomePage() {
   useEffect(() => {
     if (isInitialized && !isLoading) {
       if (user && profile) {
-        // Redirect authenticated users to overview
-        router.push('/overview')
+        // Redirect authenticated users based on their role
+        if (profile.role === 'admin') {
+          router.push('/admin/dashboard')
+        } else {
+          router.push('/overview')
+        }
       } else {
         // Redirect unauthenticated users to login
         router.push('/login')

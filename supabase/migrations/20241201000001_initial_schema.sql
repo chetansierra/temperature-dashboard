@@ -5,7 +5,15 @@
 
 -- Enable necessary extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS timescaledb;
+-- Note: TimescaleDB removed as it's not available in hosted Supabase
+
+-- Ensure uuid functions are available
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'uuid_generate_v4') THEN
+        CREATE OR REPLACE FUNCTION uuid_generate_v4() RETURNS UUID AS 'SELECT gen_random_uuid()' LANGUAGE SQL;
+    END IF;
+END $$;
 
 -- =============================================
 -- CORE TABLES

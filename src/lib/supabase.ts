@@ -9,8 +9,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    flowType: 'pkce',
-    storageKey: 'sb-vhgddpxytbxqqmyicxgb-auth-token'
+    flowType: 'pkce'
   }
 })
 
@@ -43,7 +42,7 @@ export type Database = {
           tenant_id: string | null
           email: string
           full_name: string | null
-          role: 'master' | 'site_manager' | 'auditor' | 'admin'
+          role: 'admin' | 'master_user' | 'user'
           site_access: string[] | null
           auditor_expires_at: string | null
           created_at: string
@@ -54,7 +53,7 @@ export type Database = {
           tenant_id?: string | null
           email: string
           full_name?: string | null
-          role: 'master' | 'site_manager' | 'auditor' | 'admin'
+          role: 'admin' | 'master_user' | 'user'
           site_access?: string[] | null
           auditor_expires_at?: string | null
           created_at?: string
@@ -65,7 +64,7 @@ export type Database = {
           tenant_id?: string | null
           email?: string
           full_name?: string | null
-          role?: 'master' | 'site_manager' | 'auditor' | 'admin'
+          role?: 'admin' | 'master_user' | 'user'
           site_access?: string[] | null
           auditor_expires_at?: string | null
           created_at?: string

@@ -6,13 +6,22 @@ export const EmailSchema = z.string().email()
 export const TimestampSchema = z.string().datetime()
 
 // User role schema
-export const UserRoleSchema = z.enum(['master', 'site_manager', 'auditor', 'admin'])
+export const UserRoleSchema = z.enum(['admin', 'master_user', 'user'])
 
-// Environment type schema
-export const EnvironmentTypeSchema = z.enum(['cold_storage', 'blast_freezer', 'chiller', 'other'])
+// User status schema
+export const UserStatusSchema = z.enum(['active', 'suspended', 'pending'])
+
+// Organization plan schema
+export const OrganizationPlanSchema = z.enum(['basic', 'pro', 'enterprise'])
+
+// Organization status schema
+export const OrganizationStatusSchema = z.enum(['active', 'suspended', 'cancelled'])
 
 // Sensor status schema
 export const SensorStatusSchema = z.enum(['active', 'maintenance', 'decommissioned'])
+
+// Environment type schema
+export const EnvironmentTypeSchema = z.enum(['indoor', 'outdoor', 'warehouse', 'office', 'production'])
 
 // Alert schemas
 export const AlertLevelSchema = z.enum(['warning', 'critical'])
@@ -321,15 +330,15 @@ export const UserInviteRequestSchema = z.object({
   site_id: UUIDSchema.optional(),
   access_expires_at: TimestampSchema.optional()
 }).refine(data => {
-  if (data.role === 'site_manager') {
-    return data.site_id !== undefined
+  if (data.role === 'master_user') {
+    return true // Master users don't need additional constraints
   }
-  if (data.role === 'auditor') {
-    return data.access_expires_at !== undefined
+  if (data.role === 'user') {
+    return true // Regular users don't need additional constraints
   }
   return true
 }, {
-  message: "Site managers must have site_id, auditors must have access_expires_at"
+  message: "Invalid role configuration"
 })
 
 export const UserInviteResponseSchema = z.object({

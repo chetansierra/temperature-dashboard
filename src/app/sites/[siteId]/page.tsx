@@ -86,9 +86,22 @@ export default function SiteDetailPage() {
     setIsCreating(true)
 
     try {
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+      }
+
       const response = await fetch('/api/environments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({
           site_id: siteId,
@@ -347,7 +360,7 @@ export default function SiteDetailPage() {
 
           {/* Create Environment Modal */}
           {showCreateModal && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+            <div className="fixed inset-0 bg-black bg-opacity-25 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
               <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">

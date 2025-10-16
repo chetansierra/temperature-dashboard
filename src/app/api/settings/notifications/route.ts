@@ -99,9 +99,9 @@ export async function POST(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Check permissions - only masters can modify notification settings
-    if (profile.role !== 'master') {
-      const response = NextResponse.json(createAuthError('Only masters can modify notification settings'), { status: 403 })
+    // Check permissions - only master_users can modify notification settings
+    if (profile.role !== 'master_user') {
+      const response = NextResponse.json(createAuthError('Only master users can modify notification settings'), { status: 403 })
       return addRateLimitHeaders(response, rateLimitResult)
     }
 

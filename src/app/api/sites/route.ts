@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { SitesResponseSchema } from '@/utils/schemas'
-import { getAuthContext, createAuthError } from '@/utils/auth'
+import { getAuthContext, createAuthError, getOrganizationSiteFilter } from '@/utils/auth'
+import { createStandardError, ErrorCodes } from '@/utils/errors'
 import { rateLimiters, addRateLimitHeaders, createRateLimitError } from '@/utils/rate-limit'
 
 export async function GET(request: NextRequest) {
@@ -13,14 +15,45 @@ export async function GET(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Use service role client for bypassed authentication (bypasses RLS)
-    const { supabaseAdmin } = await import('@/lib/supabase-server')
-    const supabase = supabaseAdmin
+    // Get authentication context
+    const authContext = await getAuthContext(request)
+    
+    if (!authContext) {
+      const response = NextResponse.json(createAuthError('Authentication required'), { status: 401 })
+      return addRateLimitHeaders(response, rateLimitResult)
+    }
 
-    // Mock profile for bypassed authentication
-    const profile = {
-      tenant_id: '550e8400-e29b-41d4-a716-446655440000',
-      role: 'master'
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
+    
+    const profile = authContext.profile
+
+    // Check if user has organization membership (except for admins)
+    if (profile.role !== 'admin' && !profile.tenant_id) {
+      const response = NextResponse.json(
+        createStandardError('NO_ORGANIZATION_MEMBERSHIP'),
+        { status: 403 }
+      )
+      return addRateLimitHeaders(response, rateLimitResult)
     }
 
     // Parse query parameters
@@ -29,26 +62,44 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '20'), 100)
     const offset = (page - 1) * limit
 
-    // Get sites with aggregated data - simplified query first
-    console.log('Fetching sites for tenant:', profile.tenant_id)
-    const { data: sitesData, error: sitesError, count } = await supabase
+    // Apply organization-based filtering using new auth utilities
+    const filter = getOrganizationSiteFilter(profile)
+    
+    let query = supabase
       .from('sites')
-      .select('*', { count: 'exact' })
-      .eq('tenant_id', profile.tenant_id!)
+      .select(`
+        id,
+        name,
+        location,
+        description,
+        status,
+        created_at,
+        updated_at,
+        tenant_id,
+        tenant:tenants!sites_tenant_id_fkey(
+          id,
+          name
+        )
+      `, { count: 'exact' })
       .range(offset, offset + limit - 1)
       .order('created_at', { ascending: false })
+
+    // Apply organization filter for non-admin users
+    if (filter) {
+      query = query.eq('tenant_id', filter.tenant_id)
+    }
+
+    console.log('Fetching sites for tenant:', profile.tenant_id)
+    const { data: sitesData, error: sitesError, count } = await query
 
     console.log('Sites query result:', { sitesData, sitesError, count })
 
     if (sitesError) {
       console.error('Sites query error details:', sitesError)
-      const response = NextResponse.json({
-        error: {
-          code: 'SITES_FETCH_FAILED',
-          message: 'Failed to fetch sites',
-          requestId: crypto.randomUUID()
-        }
-      }, { status: 500 })
+      const response = NextResponse.json(
+        createStandardError('FETCH_FAILED', 'Failed to fetch sites data', { error: sitesError.message }),
+        { status: 500 }
+      )
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
@@ -89,7 +140,7 @@ export async function GET(request: NextRequest) {
       alertCountMap.set(alert.site_id, (alertCountMap.get(alert.site_id) || 0) + 1)
     })
 
-    // Process sites data to match schema
+    // Process sites data for organization users
     const sites = (sitesData || []).map((site: any) => {
       const envCount = envCountMap.get(site.id) || 0
       const sensorCount = sensorCountMap.get(site.id) || 0
@@ -106,16 +157,19 @@ export async function GET(request: NextRequest) {
       const processedSite = {
         id: site.id,
         tenant_id: site.tenant_id,
+        tenant_name: site.tenant?.name || 'Unknown Organization',
         site_name: site.name, // Map 'name' field to 'site_name'
-        site_code: site.site_code || `SITE-${site.name?.replace(/\s+/g, '-').toUpperCase().slice(0, 8)}`, // Generate from name if missing
+        site_code: `SITE-${site.name?.replace(/\s+/g, '-').toUpperCase().slice(0, 8)}`, // Generate site code
         location: site.location,
-        timezone: site.timezone,
-        created_at: new Date(site.created_at).toISOString(), // Convert to ISO format with Z
-        updated_at: new Date(site.updated_at).toISOString(), // Convert to ISO format with Z
+        timezone: 'UTC', // Default timezone since column doesn't exist
+        created_at: new Date(site.created_at).toISOString(),
+        updated_at: new Date(site.updated_at).toISOString(),
         environment_count: envCount,
         sensor_count: sensorCount,
         active_alerts: activeAlerts,
-        health_status: healthStatus
+        health_status: healthStatus,
+        status: site.status || 'active',
+        description: site.description
       }
 
       console.log(`Processed site ${site.name}:`, {
@@ -170,15 +224,17 @@ export async function POST(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Use service role client for bypassed authentication (bypasses RLS)
-    const { supabaseAdmin } = await import('@/lib/supabase-server')
-    const supabase = supabaseAdmin
-
-    // Mock profile for bypassed authentication
-    const profile = {
-      tenant_id: '550e8400-e29b-41d4-a716-446655440000',
-      role: 'master'
+    // Get authentication context
+    const authContext = await getAuthContext(request)
+    
+    if (!authContext) {
+      const response = NextResponse.json(createAuthError('Authentication required'), { status: 401 })
+      return addRateLimitHeaders(response, rateLimitResult)
     }
+
+    // Use regular supabase client with user context
+    const supabase = await createServerSupabaseClient()
+    const profile = authContext.profile
 
     // Parse request body
     const body = await request.json()
@@ -204,9 +260,7 @@ export async function POST(request: NextRequest) {
       .insert({
         tenant_id: profile.tenant_id,
         name,
-        site_code: siteCode,
-        location,
-        timezone
+        location
       })
       .select()
       .single()
@@ -228,9 +282,9 @@ export async function POST(request: NextRequest) {
         id: newSite.id,
         tenant_id: newSite.tenant_id,
         site_name: newSite.name,
-        site_code: newSite.site_code,
+        site_code: siteCode,
         location: newSite.location,
-        timezone: newSite.timezone,
+        timezone: timezone,
         created_at: new Date(newSite.created_at).toISOString(),
         updated_at: new Date(newSite.updated_at).toISOString(),
         environment_count: 0,

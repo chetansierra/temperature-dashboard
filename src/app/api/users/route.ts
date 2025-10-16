@@ -6,9 +6,9 @@ import { z } from 'zod'
 
 const InviteUserSchema = z.object({
   email: z.string().email(),
-  role: z.enum(['master', 'site_manager', 'auditor']),
-  site_id: z.string().optional(), // For site managers
-  expiry_date: z.string().optional() // For auditors
+  role: z.enum(['master_user', 'user']),
+  site_id: z.string().optional(), // For users with site access
+  expiry_date: z.string().optional() // Legacy field, no longer used
 })
 
 export async function GET(request: NextRequest) {
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
     const usersWithSites = await Promise.all(
       (users || []).map(async (user) => {
         let sites = null
-        if (user.role === 'site_manager' && user.site_access && user.site_access.length > 0) {
+        if (user.role === 'user' && user.site_access && user.site_access.length > 0) {
           const { data: siteData } = await supabase
             .from('sites')
             .select('site_name, site_code')
@@ -139,8 +139,8 @@ export async function POST(request: NextRequest) {
 
     const { email, role, site_id, expiry_date } = validationResult.data
 
-    // Additional validation for site managers
-    if (role === 'site_manager' && !site_id) {
+    // Additional validation for users with site access
+    if (role === 'user' && !site_id) {
       const response = NextResponse.json({
         error: {
           code: 'MISSING_SITE_ID',
@@ -151,8 +151,8 @@ export async function POST(request: NextRequest) {
       return addRateLimitHeaders(response, rateLimitResult)
     }
 
-    // Check if site exists and belongs to tenant (for site managers)
-    if (role === 'site_manager' && site_id) {
+    // Check if site exists and belongs to tenant (for users with site access)
+    if (role === 'user' && site_id) {
       const { data: site, error: siteError } = await supabase
         .from('sites')
         .select('id')
@@ -195,8 +195,8 @@ export async function POST(request: NextRequest) {
     const invitationData = {
       email,
       role,
-      site_id: role === 'site_manager' ? site_id : null,
-      expiry_date: role === 'auditor' ? expiry_date : null,
+      site_id: role === 'user' ? site_id : null,
+      expiry_date: null, // No longer using auditor role
       invited_by: profile.id,
       tenant_id: profile.tenant_id!,
       status: 'pending',

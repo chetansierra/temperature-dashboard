@@ -13,7 +13,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
-  const { user, profile, signOut } = useAuthStore()
+  const { user, profile, signOutWithRedirect } = useAuthStore()
 
   const navigation = [
     { name: 'Overview', href: '/overview', icon: '📊' },
@@ -22,13 +22,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     { name: 'Sensors', href: '/sensors', icon: '🌡️' },
     { name: 'Alerts', href: '/alerts', icon: '🚨' },
     { name: 'Analytics', href: '/analytics', icon: '📈' },
+    { name: 'Access Control', href: '/access-control', icon: '🔐', roles: ['master_user', 'master'] },
     { name: 'Settings', href: '/settings', icon: '⚙️' },
     { name: 'Users', href: '/settings/users', icon: '👥', roles: ['master', 'admin'] },
   ]
 
   const handleSignOut = async () => {
-    await signOut()
-    router.push('/login')
+    await signOutWithRedirect(router)
   }
 
   return (
@@ -75,7 +75,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
             {/* Spacer to push user info to the right */}
             <div className="flex-1"></div>
 
-            <div className="flex items-center space-x-4 pr-4">
+            <div className="flex items-center space-x-4 ml-auto">
               <div className="text-sm text-gray-600">
                 {profile?.role && (
                   <span className="capitalize bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
@@ -101,6 +101,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
           </div>
         </main>
       </div>
+
+
     </div>
   )
 }

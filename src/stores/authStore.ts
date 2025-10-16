@@ -6,7 +6,7 @@ export interface UserProfile {
   id: string
   email: string
   full_name: string | null
-  role: 'master' | 'site_manager' | 'auditor' | 'admin'
+  role: 'admin' | 'master_user' | 'user' // New clean role system only
   tenant_id: string | null
   site_access: string[] | null
   auditor_expires_at: string | null
@@ -24,6 +24,7 @@ interface AuthState {
   initialize: () => Promise<void>
   signIn: (email: string, password: string) => Promise<{ error?: string }>
   signOut: () => Promise<void>
+  signOutWithRedirect: (router: any) => Promise<void>
   refreshProfile: () => Promise<void>
 }
 
@@ -35,9 +36,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initialize: async () => {
     try {
-      // Get initial session from cookies/localStorage
+      // Get current session
       const { data: { session }, error } = await supabase.auth.getSession()
-      
+
       if (error) {
         console.error('Auth initialization error:', error)
         set({ isLoading: false, isInitialized: true })
@@ -54,50 +55,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         if (profileError) {
           console.error('Profile fetch error:', profileError)
-          set({ 
-            user: session.user, 
-            profile: null, 
-            isLoading: false, 
-            isInitialized: true 
+          set({
+            user: session.user,
+            profile: null,
+            isLoading: false,
+            isInitialized: true
           })
           return
         }
 
-        // Check if auditor access has expired
-        if (profile.role === 'auditor' && profile.auditor_expires_at) {
-          const expiryDate = new Date(profile.auditor_expires_at)
-          if (expiryDate < new Date()) {
-            // Access expired, sign out
-            await supabase.auth.signOut()
-            set({ 
-              user: null, 
-              profile: null, 
-              isLoading: false, 
-              isInitialized: true 
-            })
-            return
-          }
-        }
-
-        set({ 
-          user: session.user, 
-          profile, 
-          isLoading: false, 
-          isInitialized: true 
+        set({
+          user: session.user,
+          profile,
+          isLoading: false,
+          isInitialized: true
         })
       } else {
-        set({ 
-          user: null, 
-          profile: null, 
-          isLoading: false, 
-          isInitialized: true 
+        set({
+          user: null,
+          profile: null,
+          isLoading: false,
+          isInitialized: true
         })
       }
 
-      // Listen for auth changes and sync with cookies
+      // Listen for auth changes
       supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
         console.log('Auth state change:', event, session?.user?.id)
-        
+
         if (event === 'SIGNED_IN' && session?.user) {
           // Fetch user profile
           const { data: profile, error: profileError } = await supabase
@@ -107,15 +92,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             .single()
 
           if (!profileError && profile) {
-            // Check auditor access expiry
-            if (profile.role === 'auditor' && profile.auditor_expires_at) {
-              const expiryDate = new Date(profile.auditor_expires_at)
-              if (expiryDate < new Date()) {
-                await supabase.auth.signOut()
-                return
-              }
-            }
-
             set({ user: session.user, profile, isLoading: false })
           } else {
             set({ user: session.user, profile: null, isLoading: false })
@@ -171,6 +147,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  signOutWithRedirect: async (router: any) => {
+    const { profile } = get()
+    
+    try {
+      await supabase.auth.signOut()
+
+      // Redirect based on user role
+      if (profile?.role === 'admin') {
+        router.push('/admin-login')
+      } else {
+        router.push('/login')
+      }
+    } catch (error) {
+      console.error('Sign out error:', error)
+      // Fallback redirect
+      router.push('/login')
+    }
+  },
+
   refreshProfile: async () => {
     const { user } = get()
     if (!user) return
@@ -183,15 +178,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .single()
 
       if (!error && profile) {
-        // Check auditor access expiry
-        if (profile.role === 'auditor' && profile.auditor_expires_at) {
-          const expiryDate = new Date(profile.auditor_expires_at)
-          if (expiryDate < new Date()) {
-            await supabase.auth.signOut()
-            return
-          }
-        }
-
         set({ profile })
       }
     } catch (error) {
@@ -215,21 +201,17 @@ export const useCanManageAlerts = (siteId?: string) => {
   const { profile } = useAuthStore()
   if (!profile) return false
   
-  // Admin and auditor cannot manage alerts (read-only)
-  if (profile.role === 'admin' || profile.role === 'auditor') {
+  // Admin cannot manage alerts (read-only)
+  if (profile.role === 'admin') {
     return false
   }
   
-  // Master can manage alerts in their tenant
-  if (profile.role === 'master') {
+  // Master user can manage alerts in their tenant
+  if (profile.role === 'master_user') {
     return true
   }
   
-  // Site manager can manage alerts in their assigned sites
-  if (profile.role === 'site_manager' && siteId) {
-    return profile.site_access?.includes(siteId) || false
-  }
-  
+  // Regular users cannot manage alerts (read-only)
   return false
 }
 
@@ -242,11 +224,11 @@ export const useCanAccessSite = (siteId: string) => {
     return true
   }
   
-  // Site manager can only access their assigned sites
-  if (profile.role === 'site_manager') {
-    return profile.site_access?.includes(siteId) || false
+  // Master user can access all sites in their tenant
+  if (profile.role === 'master_user') {
+    return true
   }
   
-  // Master and auditor can access any site in their tenant (handled by RLS)
-  return profile.role === 'master' || profile.role === 'auditor'
+  // Regular users can only access assigned sites (handled by RLS and user_site_access table)
+  return false // Will be determined by RLS policies
 }

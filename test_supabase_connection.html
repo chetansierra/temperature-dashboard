@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Supabase Connection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Supabase Connection Test</h1>
+    <div id="result"></div>
+    
+    <script>
+        const supabaseUrl = 'https://vhgddpxytbxqqmyicxgb.supabase.co'
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoZ2RkcHh5dGJ4cXFteWljeGdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg0Nzc3NjMsImV4cCI6MjA3NDA1Mzc2M30.woYsfOcAjm0futIyilCyWnPkaXy8rPkcSFNlxVlykTQ'
+        
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey)
+        
+        async function testLogin() {
+            console.log('Testing login...')
+            
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: 'admin1@gmail.com',
+                    password: 'admin1'
+                })
+                
+                if (error) {
+                    document.getElementById('result').innerHTML = `
+                        <h2>❌ Login Failed</h2>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p><strong>Code:</strong> ${error.status || 'N/A'}</p>
+                        <pre>${JSON.stringify(error, null, 2)}</pre>
+                    `
+                } else {
+                    document.getElementById('result').innerHTML = `
+                        <h2>✅ Login Successful</h2>
+                        <p><strong>User ID:</strong> ${data.user?.id}</p>
+                        <p><strong>Email:</strong> ${data.user?.email}</p>
+                        <p><strong>Confirmed:</strong> ${data.user?.email_confirmed_at ? 'Yes' : 'No'}</p>
+                    `
+                }
+            } catch (err) {
+                document.getElementById('result').innerHTML = `
+                    <h2>❌ Unexpected Error</h2>
+                    <pre>${JSON.stringify(err, null, 2)}</pre>
+                `
+            }
+        }
+        
+        // Test immediately
+        testLogin()
+    </script>
+</body>
+</html>

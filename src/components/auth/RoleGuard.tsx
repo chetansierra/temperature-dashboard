@@ -4,7 +4,7 @@ import React from 'react'
 import { useAuthStore } from '@/stores/authStore'
 
 export interface RoleGuardProps {
-  allowedRoles: ('master' | 'site_manager' | 'auditor' | 'admin')[]
+  allowedRoles: ('master_user' | 'user' | 'admin')[]
   children: React.ReactNode
   fallback?: React.ReactNode
   requireSiteAccess?: string // Site ID for site-specific access
@@ -97,33 +97,7 @@ const RoleGuard: React.FC<RoleGuardProps> = ({
     }
   }
 
-  // Check if auditor access has expired
-  if (profile.role === 'auditor' && profile.auditor_expires_at) {
-    const expiryDate = new Date(profile.auditor_expires_at)
-    const now = new Date()
-    
-    if (expiryDate < now) {
-      if (fallback) return <>{fallback}</>
-      
-      if (showError) {
-        return (
-          <div className="flex items-center justify-center p-8">
-            <div className="text-center">
-              <div className="text-red-500 mb-2">⏰ Access Expired</div>
-              <div className="text-sm text-gray-600">
-                Your auditor access expired on {expiryDate.toLocaleDateString()}
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                Please contact your administrator for renewed access
-              </div>
-            </div>
-          </div>
-        )
-      }
-      
-      return null
-    }
-  }
+  // No longer checking auditor expiry since we don't use auditor role
 
   // All checks passed, render children
   return <>{children}</>
@@ -136,28 +110,24 @@ function checkSiteAccess(profile: any, siteId: string): boolean {
     return true
   }
   
-  // Site manager can only access their assigned site
-  if (profile.role === 'site_manager') {
-    return profile.site_id === siteId
+  // Users can only access their assigned sites
+  if (profile.role === 'user') {
+    return profile.site_access && profile.site_access.includes(siteId)
   }
   
-  // Master and auditor can access any site in their tenant (handled by RLS)
-  return profile.role === 'master' || profile.role === 'auditor'
+  // Master users can access any site in their tenant (handled by RLS)
+  return profile.role === 'master_user'
 }
 
 export default RoleGuard
 
 // Convenience components for common role combinations
-export const MasterOnly: React.FC<Omit<RoleGuardProps, 'allowedRoles'>> = (props) => (
-  <RoleGuard {...props} allowedRoles={['master']} />
+export const MasterUserOnly: React.FC<Omit<RoleGuardProps, 'allowedRoles'>> = (props) => (
+  <RoleGuard {...props} allowedRoles={['master_user']} />
 )
 
-export const SiteManagerOnly: React.FC<Omit<RoleGuardProps, 'allowedRoles'>> = (props) => (
-  <RoleGuard {...props} allowedRoles={['site_manager']} />
-)
-
-export const AuditorOnly: React.FC<Omit<RoleGuardProps, 'allowedRoles'>> = (props) => (
-  <RoleGuard {...props} allowedRoles={['auditor']} />
+export const UserOnly: React.FC<Omit<RoleGuardProps, 'allowedRoles'>> = (props) => (
+  <RoleGuard {...props} allowedRoles={['user']} />
 )
 
 export const AdminOnly: React.FC<Omit<RoleGuardProps, 'allowedRoles'>> = (props) => (
@@ -165,9 +135,9 @@ export const AdminOnly: React.FC<Omit<RoleGuardProps, 'allowedRoles'>> = (props)
 )
 
 export const ManagementRoles: React.FC<Omit<RoleGuardProps, 'allowedRoles'>> = (props) => (
-  <RoleGuard {...props} allowedRoles={['master', 'site_manager']} />
+  <RoleGuard {...props} allowedRoles={['master_user', 'admin']} />
 )
 
 export const AllRoles: React.FC<Omit<RoleGuardProps, 'allowedRoles'>> = (props) => (
-  <RoleGuard {...props} allowedRoles={['master', 'site_manager', 'auditor', 'admin']} />
+  <RoleGuard {...props} allowedRoles={['master_user', 'user', 'admin']} />
 )

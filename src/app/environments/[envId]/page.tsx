@@ -19,10 +19,24 @@ import {
   Activity
 } from 'lucide-react'
 
-// Fetcher function for SWR
-const fetcher = (url: string) => fetch(url, {
-  credentials: 'include'
-}).then((res) => res.json())
+// Fetcher function for SWR with Bearer token
+const fetcher = async (url: string) => {
+  const { supabase } = await import('@/lib/supabase')
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  }
+  
+  if (session?.access_token) {
+    headers.Authorization = `Bearer ${session.access_token}`
+  }
+
+  return fetch(url, {
+    headers,
+    credentials: 'include'
+  }).then((res) => res.json())
+}
 
 interface Sensor {
   id: string
@@ -98,9 +112,22 @@ export default function EnvironmentDetailPage() {
     setIsCreating(true)
 
     try {
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+      }
+
       const response = await fetch('/api/sensors', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({
           environment_id: envId,
