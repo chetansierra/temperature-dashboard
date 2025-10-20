@@ -28,7 +28,27 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/admin/users')
+      
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+        console.log('Adding Bearer token to users request')
+      } else {
+        console.warn('No session or access token found for users request')
+      }
+      
+      const response = await fetch('/api/admin/users', {
+        headers,
+        credentials: 'include'
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch users')
