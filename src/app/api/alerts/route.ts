@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { AlertsResponseSchema } from '@/utils/schemas'
 import { getAuthContext, createAuthError } from '@/utils/auth'

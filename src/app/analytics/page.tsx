@@ -10,10 +10,7 @@ import Chart from '@/components/ui/Chart'
 import { ChartDataPoint } from '@/components/ui/Chart'
 import { Thermometer, TrendingUp, TrendingDown, Activity, BarChart3, Calendar, Clock } from 'lucide-react'
 
-// Fetcher function for SWR
-const fetcher = (url: string) => fetch(url, {
-  credentials: 'include'
-}).then((res) => res.json())
+import { fetcher } from '@/utils/fetchers'
 
 interface Sensor {
   id: string

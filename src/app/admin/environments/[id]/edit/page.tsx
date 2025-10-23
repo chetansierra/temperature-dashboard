@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -28,8 +28,9 @@ interface FormData {
   status: string
 }
 
-export default function EditEnvironmentPage({ params }: { params: { id: string } }) {
+export default function EditEnvironmentPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
+  const resolvedParams = use(params)
   const [environment, setEnvironment] = useState<Environment | null>(null)
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -44,15 +45,35 @@ export default function EditEnvironmentPage({ params }: { params: { id: string }
 
   useEffect(() => {
     fetchEnvironment()
-  }, [params.id])
+  }, [resolvedParams.id])
 
   const fetchEnvironment = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/admin/environments/${params.id}`)
+      
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+      
+      const response = await fetch(`/api/admin/environments/${resolvedParams.id}`, {
+        headers,
+        credentials: 'include'
+      })
       
       if (!response.ok) {
-        throw new Error('Failed to fetch environment')
+        if (response.status === 404) {
+          throw new Error('Environment not found. It may have been deleted or you may not have access to it.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error?.message || `Failed to fetch environment (${response.status})`)
       }
       
       const data = await response.json()
@@ -67,7 +88,7 @@ export default function EditEnvironmentPage({ params }: { params: { id: string }
       setError(null)
     } catch (err) {
       console.error('Error fetching environment:', err)
-      setError('Failed to load environment')
+      setError(err instanceof Error ? err.message : 'Failed to load environment')
     } finally {
       setLoading(false)
     }
@@ -79,11 +100,22 @@ export default function EditEnvironmentPage({ params }: { params: { id: string }
     setError(null)
 
     try {
-      const response = await fetch(`/api/admin/environments/${params.id}`, {
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+      
+      const response = await fetch(`/api/admin/environments/${resolvedParams.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers,
+        credentials: 'include',
         body: JSON.stringify(formData)
       })
 
@@ -92,8 +124,8 @@ export default function EditEnvironmentPage({ params }: { params: { id: string }
         throw new Error(errorData.error?.message || 'Failed to update environment')
       }
 
-      // Redirect back to environments page
-      router.push('/admin/environments')
+      // Redirect back to environment details page
+      router.push(`/admin/environments/${resolvedParams.id}`)
     } catch (err) {
       console.error('Error updating environment:', err)
       setError(err instanceof Error ? err.message : 'Failed to update environment')
@@ -107,8 +139,22 @@ export default function EditEnvironmentPage({ params }: { params: { id: string }
     setError(null)
 
     try {
-      const response = await fetch(`/api/admin/environments/${params.id}`, {
-        method: 'DELETE'
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+      
+      const response = await fetch(`/api/admin/environments/${resolvedParams.id}`, {
+        method: 'DELETE',
+        headers,
+        credentials: 'include'
       })
 
       if (!response.ok) {
@@ -166,12 +212,20 @@ export default function EditEnvironmentPage({ params }: { params: { id: string }
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
           <h3 className="text-lg font-medium text-red-800 mb-2">Error Loading Environment</h3>
           <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={fetchEnvironment}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-          >
-            Retry
-          </button>
+          <div className="flex space-x-3">
+            <button
+              onClick={fetchEnvironment}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => router.back()}
+              className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              Go Back
+            </button>
+          </div>
         </div>
       </div>
     )

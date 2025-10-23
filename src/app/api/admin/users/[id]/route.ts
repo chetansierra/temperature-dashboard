@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getAuthContext, createAuthError } from '@/utils/auth'
 import { sendPasswordResetEmail } from '@/lib/email'
@@ -19,7 +20,28 @@ export async function GET(
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    const supabase = await createServerSupabaseClient()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
+    
     const { id: userId } = await params
 
     // Get user details
@@ -105,7 +127,27 @@ export async function PUT(
     const { full_name, role, status, password } = body
     const { id: userId } = await params
 
-    const supabase = await createServerSupabaseClient()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
 
     // Check if user exists
     const { data: existingUser } = await supabase
@@ -308,7 +350,28 @@ export async function DELETE(
     }
 
     const { id: userId } = await params
-    const supabase = await createServerSupabaseClient()
+    
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
 
     // Check if user exists and get details for logging
     const { data: user } = await supabase

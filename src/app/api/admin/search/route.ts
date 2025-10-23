@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getAuthContext, createAuthError } from '@/utils/auth'
 
@@ -15,7 +16,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    const supabase = await createServerSupabaseClient()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
     const url = new URL(request.url)
     const query = url.searchParams.get('q')
     const type = url.searchParams.get('type') // organizations, users, sites, environments, sensors, all

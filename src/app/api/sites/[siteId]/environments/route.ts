@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getAuthContext, createAuthError, validateOrganizationAccess } from '@/utils/auth'
 import { createStandardError, createOrganizationAccessError, createNotFoundError } from '@/utils/errors'
@@ -11,7 +12,27 @@ export async function GET(request: NextRequest, { params }: { params: { siteId: 
       return NextResponse.json(createAuthError('Authentication required'), { status: 401 })
     }
 
-    const supabase = await createServerSupabaseClient()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
     
     // First verify the site exists and get its organization
     const { data: site, error: siteError } = await supabase
@@ -41,7 +62,7 @@ export async function GET(request: NextRequest, { params }: { params: { siteId: 
       .select(`
         id,
         name,
-        environment_type,
+        type,
         status,
         description,
         created_at,

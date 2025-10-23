@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       // Get environments
       const { data: environments } = await supabase
         .from('environments')
-        .select('id, name, environment_type')
+        .select('id, name, type')
         .in('id', rawSensors.map(s => s.environment_id))
 
       // Get sites
@@ -107,6 +107,7 @@ export async function GET(request: NextRequest) {
         is_active: sensor.status === 'active',
         site_name: siteMap.get(sensor.site_id)?.site_name || 'Unknown Site',
         environment_name: envMap.get(sensor.environment_id)?.name || 'Unknown Environment',
+        environment_type: envMap.get(sensor.environment_id)?.type || null,
         current_temperature: null, // Will be populated from readings if needed
         battery_level: null,
         signal_strength: null,

@@ -43,7 +43,7 @@ export async function GET(
       .select(`
         id,
         site_id,
-        environment_type,
+        type,
         name,
         description,
         created_at,

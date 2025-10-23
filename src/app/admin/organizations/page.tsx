@@ -77,43 +77,7 @@ export default function OrganizationsPage() {
     }
   }
 
-  const handleDeleteOrganization = async (orgId: string, orgName: string) => {
-    if (!confirm(`Are you sure you want to delete "${orgName}"? This action cannot be undone.`)) {
-      return
-    }
 
-    try {
-      // Get the current session to include in the request
-      const { supabase } = await import('@/lib/supabase')
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      }
-      
-      // Add authorization header if we have a session
-      if (session?.access_token) {
-        headers.Authorization = `Bearer ${session.access_token}`
-      }
-      
-      const response = await fetch(`/api/admin/organizations/${orgId}`, {
-        method: 'DELETE',
-        headers,
-        credentials: 'include'
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error?.message || 'Failed to delete organization')
-      }
-
-      // Refresh the list
-      fetchOrganizations()
-    } catch (err) {
-      console.error('Error deleting organization:', err)
-      alert(err instanceof Error ? err.message : 'Failed to delete organization')
-    }
-  }
 
   if (loading) {
     return (
@@ -213,8 +177,8 @@ export default function OrganizationsPage() {
                 className="p-6 hover:bg-gray-50 cursor-pointer transition-colors"
                 onClick={() => router.push(`/admin/organizations/${org.id}/manage`)}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
+                <div>
+                  <div>
                     <div className="flex items-center space-x-3">
                       <h4 className="text-lg font-medium text-gray-900">{org.name}</h4>
                       <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">
@@ -274,41 +238,6 @@ export default function OrganizationsPage() {
                         ></div>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="ml-6 flex items-center space-x-3">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        router.push(`/admin/organizations/${org.id}/manage`)
-                      }}
-                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                    >
-                      Manage
-                    </button>
-                    <Link
-                      href={`/admin/organizations/${org.id}/users`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                    >
-                      Users
-                    </Link>
-                    <Link
-                      href={`/admin/organizations/${org.id}/edit`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-gray-600 hover:text-gray-800 text-sm font-medium"
-                    >
-                      Edit
-                    </Link>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDeleteOrganization(org.id, org.name)
-                      }}
-                      className="text-red-600 hover:text-red-800 text-sm font-medium"
-                    >
-                      Delete
-                    </button>
                   </div>
                 </div>
               </div>

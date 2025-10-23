@@ -38,10 +38,32 @@ export default function OrganizationUsersPage({ params }: { params: { id: string
     try {
       setLoading(true)
       
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+        console.log('Adding Bearer token to organization users requests')
+      } else {
+        console.warn('No session or access token found for organization users requests')
+      }
+      
       // Fetch organization details and users in parallel
       const [orgResponse, usersResponse] = await Promise.all([
-        fetch(`/api/admin/organizations/${params.id}`),
-        fetch(`/api/admin/users?organization_id=${params.id}`)
+        fetch(`/api/admin/organizations/${params.id}`, {
+          headers,
+          credentials: 'include'
+        }),
+        fetch(`/api/admin/users?organization_id=${params.id}`, {
+          headers,
+          credentials: 'include'
+        })
       ])
 
       if (!orgResponse.ok || !usersResponse.ok) {
@@ -64,28 +86,7 @@ export default function OrganizationUsersPage({ params }: { params: { id: string
     }
   }
 
-  const handleDeleteUser = async (userId: string, userEmail: string) => {
-    if (!confirm(`Are you sure you want to delete user "${userEmail}"? This action cannot be undone.`)) {
-      return
-    }
 
-    try {
-      const response = await fetch(`/api/admin/users/${userId}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error?.message || 'Failed to delete user')
-      }
-
-      // Refresh the data
-      fetchData()
-    } catch (err) {
-      console.error('Error deleting user:', err)
-      alert(err instanceof Error ? err.message : 'Failed to delete user')
-    }
-  }
 
   if (loading) {
     return (
@@ -272,12 +273,6 @@ export default function OrganizationUsersPage({ params }: { params: { id: string
                     >
                       Edit
                     </Link>
-                    <button
-                      onClick={() => handleDeleteUser(user.id, user.email)}
-                      className="text-red-600 hover:text-red-800 text-sm font-medium"
-                    >
-                      Delete
-                    </button>
                   </div>
                 </div>
               </div>

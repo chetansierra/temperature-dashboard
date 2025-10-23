@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getAuthContext, createAuthError } from '@/utils/auth'
 
@@ -15,7 +16,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    const supabase = await createServerSupabaseClient()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
+
     const url = new URL(request.url)
     const organizationId = url.searchParams.get('organization_id')
     const siteId = url.searchParams.get('site_id')
@@ -39,7 +61,9 @@ export async function GET(request: NextRequest) {
             name,
             slug
           )
-        )
+        ),
+        sensors(count),
+        alerts(count)
       `)
       .order('created_at', { ascending: false })
 
@@ -85,10 +109,10 @@ export async function GET(request: NextRequest) {
 
         // Get latest sensor reading
         const { data: latestReading } = await supabase
-          .from('sensor_readings')
-          .select('created_at, temperature, humidity')
-          .eq('environment_id', environment.id)
-          .order('created_at', { ascending: false })
+          .from('readings')
+          .select('ts, temperature, humidity, sensor:sensors(environment_id)')
+          .eq('sensor.environment_id', environment.id)
+          .order('ts', { ascending: false })
           .limit(1)
           .single()
 
@@ -96,7 +120,7 @@ export async function GET(request: NextRequest) {
           ...environment,
           sensor_count: sensorCount || 0,
           alert_count: alertCount || 0,
-          last_reading: latestReading?.created_at || null,
+          last_reading: latestReading?.ts || null,
           last_temperature: latestReading?.temperature || null,
           last_humidity: latestReading?.humidity || null,
           health_status: alertCount && alertCount > 0 ? 'warning' : 
@@ -161,7 +185,27 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const supabase = await createServerSupabaseClient()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
 
     // Check if site exists
     const { data: site } = await supabase

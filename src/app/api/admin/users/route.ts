@@ -120,27 +120,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    // Use appropriate supabase client based on auth method
-    let supabase
-    const authHeader = request.headers.get("authorization")
-    
-    if (authHeader?.startsWith("Bearer ")) {
-      // For Bearer token auth, use anon client with the token
-      supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          global: {
-            headers: {
-              Authorization: authHeader
-            }
-          }
+    // For admin operations like creating users, we need the service role client
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!supabaseServiceKey) {
+      return NextResponse.json({
+        error: {
+          code: 'CONFIG_ERROR',
+          message: 'Service role key not configured',
+          requestId: crypto.randomUUID()
         }
-      )
-    } else {
-      // Use the standard server client for cookie-based auth
-      supabase = await createServerSupabaseClient()
+      }, { status: 500 })
     }
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      supabaseServiceKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
 
     const body = await request.json()
     const { email, password, full_name, role, tenant_id } = body

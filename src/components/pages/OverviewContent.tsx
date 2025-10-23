@@ -7,25 +7,7 @@ import KPITile from '@/components/ui/KPITile'
 import Chart from '@/components/ui/Chart'
 import { supabase } from '@/lib/supabase'
 
-// Fetcher function for SWR with Authorization header
-const fetcher = async (url: string) => {
-  // Get the current session and access token
-  const { data: { session } } = await supabase.auth.getSession()
-  
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  }
-  
-  // Add Authorization header if we have a session
-  if (session?.access_token) {
-    headers.Authorization = `Bearer ${session.access_token}`
-  }
-  
-  return fetch(url, {
-    credentials: 'include',
-    headers
-  }).then((res) => res.json())
-}
+import { fetcher } from '@/utils/fetchers'
 
 export const OverviewContent: React.FC = () => {
   const router = useRouter()
@@ -135,32 +117,20 @@ export const OverviewContent: React.FC = () => {
         console.debug('OverviewContent - No access token available, relying on cookies for auth')
       }
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      }
-
-      if (accessToken) {
-        headers.Authorization = `Bearer ${accessToken}`
-      }
-
-      const response = await fetch('/api/chart/query', {
-        method: 'POST',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify({
-          sensor_ids: sensors.map(s => s.id),
-          start_time: startTime.toISOString(),
-          end_time: endTime.toISOString(),
-          aggregation: 'hourly',
-          metrics: ['avg']
-        })
+      const { apiPost } = await import('@/utils/api')
+      const response = await apiPost('/api/chart/query', {
+        sensor_ids: sensors.map(s => s.id),
+        start_time: startTime.toISOString(),
+        end_time: endTime.toISOString(),
+        aggregation: 'hourly',
+        metrics: ['avg']
       })
 
-      if (!response.ok) {
-        throw new Error(`Chart API error: ${response.status}`)
+      if (response.error) {
+        throw new Error(response.error.message || 'Chart API error')
       }
 
-      const chartResponse = await response.json()
+      const chartResponse = response.data
       console.debug('OverviewContent - Chart API response:', chartResponse)
       
       // Transform data for chart component

@@ -33,7 +33,24 @@ export default function OrganizationSelector({ currentOrgId }: OrganizationSelec
   const fetchOrganizations = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/admin/organizations')
+      
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+      }
+      
+      const response = await fetch('/api/admin/organizations', {
+        headers,
+        credentials: 'include'
+      })
       
       if (response.ok) {
         const data = await response.json()
@@ -97,7 +114,7 @@ export default function OrganizationSelector({ currentOrgId }: OrganizationSelec
         <select
           value={isViewingAsOrg ? currentViewingOrg?.id || '' : 'admin'}
           onChange={(e) => handleOrganizationSelect(e.target.value)}
-          className="appearance-none bg-white border border-gray-300 rounded-md px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="appearance-none bg-white border border-gray-300 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOCIgdmlld0JveD0iMCAwIDEyIDgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xIDFMNiA2TDExIDEiIHN0cm9rZT0iIzZCNzI4MCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K')] bg-no-repeat bg-right-3 bg-center"
         >
           <option value="admin">👑 Admin View</option>
           <optgroup label="Organizations">

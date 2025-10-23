@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getAuthContext, createAuthError } from '@/utils/auth'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authContext = await getAuthContext(request)
@@ -18,8 +19,32 @@ export async function GET(
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    const supabase = await createServerSupabaseClient()
-    const environmentId = params.id
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
+
+    const { id } = await params
+    const environmentId = id
+
+    console.log('Fetching environment with ID:', environmentId)
 
     // Get environment details
     const { data: environment, error } = await supabase
@@ -82,7 +107,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authContext = await getAuthContext(request)
@@ -98,9 +123,31 @@ export async function PUT(
 
     const body = await request.json()
     const { name, type, status } = body
-    const environmentId = params.id
-
-    const supabase = await createServerSupabaseClient()
+    
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
+    
+    const { id } = await params
+    const environmentId = id
 
     // Check if environment exists
     const { data: existingEnvironment } = await supabase
@@ -220,7 +267,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authContext = await getAuthContext(request)
@@ -234,8 +281,30 @@ export async function DELETE(
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    const environmentId = params.id
-    const supabase = await createServerSupabaseClient()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
+    
+    const { id } = await params
+    const environmentId = id
 
     // Check if environment exists and get details for logging
     const { data: environment } = await supabase

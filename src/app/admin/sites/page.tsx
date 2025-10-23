@@ -50,9 +50,24 @@ export default function AdminSitesPage() {
     try {
       setLoading(true)
       
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+      
       // Fetch organizations for filter dropdown (only for admins)
       try {
-        const orgResponse = await fetch('/api/admin/organizations')
+        const orgResponse = await fetch('/api/admin/organizations', {
+          headers,
+          credentials: 'include'
+        })
         if (orgResponse.ok) {
           const orgData = await orgResponse.json()
           setOrganizations(orgData.organizations || [])
@@ -74,12 +89,27 @@ export default function AdminSitesPage() {
 
   const fetchSites = async () => {
     try {
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+
       const params = new URLSearchParams()
       if (filters.organization) params.append('organization_id', filters.organization)
       if (filters.status) params.append('status', filters.status)
       if (filters.location) params.append('location', filters.location)
 
-      const response = await fetch(`/api/admin/sites?${params.toString()}`)
+      const response = await fetch(`/api/admin/sites?${params.toString()}`, {
+        headers,
+        credentials: 'include'
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch sites')
@@ -206,7 +236,7 @@ export default function AdminSitesPage() {
               id="organization"
               value={filters.organization}
               onChange={(e) => handleFilterChange('organization', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOCIgdmlld0JveD0iMCAwIDEyIDgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xIDFMNiA2TDExIDEiIHN0cm9rZT0iIzZCNzI4MCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K')] bg-no-repeat bg-right-3 bg-center pr-10"
             >
               <option value="">All Organizations</option>
               {organizations.map((org) => (
@@ -225,7 +255,7 @@ export default function AdminSitesPage() {
               id="status"
               value={filters.status}
               onChange={(e) => handleFilterChange('status', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOCIgdmlld0JveD0iMCAwIDEyIDgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xIDFMNiA2TDExIDEiIHN0cm9rZT0iIzZCNzI4MCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K')] bg-no-repeat bg-right-3 bg-center pr-10"
             >
               <option value="">All Statuses</option>
               <option value="active">Active</option>
@@ -393,6 +423,12 @@ export default function AdminSitesPage() {
                       </div>
                       
                       <div className="ml-6 flex items-center space-x-3">
+                        <Link
+                          href={`/admin/sensors/new?site=${site.id}`}
+                          className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors"
+                        >
+                          Add Sensor
+                        </Link>
                         <Link
                           href={`/admin/view-as/${site.tenant?.id}`}
                           className="text-blue-600 hover:text-blue-800 text-sm font-medium"

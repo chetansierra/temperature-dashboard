@@ -25,28 +25,72 @@ export async function getAuthContext(
   request: NextRequest
 ): Promise<AuthContext | null> {
   console.log("Auth - getAuthContext called");
+  
+  // Debug: Log all relevant headers
+  const authHeader = request.headers.get("authorization")
+  const userIdHeader = request.headers.get('x-user-id')
+  const userEmailHeader = request.headers.get('x-user-email')
+  const cookieHeader = request.headers.get('cookie')
+  
+  console.debug("Auth - Headers check:")
+  console.debug("- Authorization:", authHeader ? `Bearer ${authHeader.substring(7, 20)}...` : 'None')
+  console.debug("- x-user-id:", userIdHeader || 'None')
+  console.debug("- x-user-email:", userEmailHeader || 'None')
+  console.debug("- Cookie length:", cookieHeader?.length || 0)
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseServiceKey) {
+    console.error("Auth - SUPABASE_SERVICE_ROLE_KEY not configured")
+    return null
+  }
+
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  })
 
   try {
-    // First, check if middleware has set user headers
-    const userIdHeader = request.headers.get('x-user-id')
-    const userEmailHeader = request.headers.get('x-user-email')
-    
+    // First, try Bearer token authentication (most reliable for admin)
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.substring(7)
+      console.debug("Auth - Trying Bearer token authentication")
+
+      try {
+        const { data: tokenData, error: tokenError } = await supabaseAdmin.auth.getUser(token)
+        if (!tokenError && tokenData.user) {
+          console.debug("Auth - Bearer token authentication successful")
+          
+          const { data: profile, error: profileError } = await supabaseAdmin
+            .from("profiles")
+            .select("*")
+            .eq("id", tokenData.user.id)
+            .single()
+
+          if (!profileError && profile) {
+            console.debug("Auth - Profile fetch successful via Bearer token:", profile.email, profile.role)
+            return {
+              user: {
+                id: tokenData.user.id,
+                email: tokenData.user.email!,
+              },
+              profile,
+            }
+          } else {
+            console.debug("Auth - Profile fetch failed via Bearer token:", profileError?.message)
+          }
+        } else {
+          console.debug("Auth - Bearer token validation failed:", tokenError?.message)
+        }
+      } catch (bearerError) {
+        console.debug("Auth - Bearer token authentication failed:", bearerError)
+      }
+    }
+
+    // Second, check if middleware has set user headers
     if (userIdHeader && userEmailHeader) {
       console.debug("Auth - Found user from middleware headers")
       
-      // Get user profile using service role
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      
-      if (!supabaseServiceKey) {
-        console.error("Auth - SUPABASE_SERVICE_ROLE_KEY not configured")
-        return null
-      }
-
-      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-        auth: { autoRefreshToken: false, persistSession: false }
-      })
-
       const { data: profile, error: profileError } = await supabaseAdmin
         .from("profiles")
         .select("*")
@@ -67,50 +111,7 @@ export async function getAuthContext(
       }
     }
 
-    // Fallback to Bearer token authentication
-    const authHeader = request.headers.get("authorization")
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.substring(7)
-      console.debug("Auth - Trying Bearer token authentication")
-
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      
-      if (supabaseServiceKey) {
-        try {
-          const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-            auth: { autoRefreshToken: false, persistSession: false }
-          })
-
-          const { data: tokenData, error: tokenError } = await supabaseAdmin.auth.getUser(token)
-          if (!tokenError && tokenData.user) {
-            console.debug("Auth - Bearer token authentication successful")
-            
-            const { data: profile, error: profileError } = await supabaseAdmin
-              .from("profiles")
-              .select("*")
-              .eq("id", tokenData.user.id)
-              .single()
-
-            if (!profileError && profile) {
-              console.debug("Auth - Profile fetch successful via Bearer token:", profile.email, profile.role)
-              return {
-                user: {
-                  id: tokenData.user.id,
-                  email: tokenData.user.email!,
-                },
-                profile,
-              }
-            }
-          }
-        } catch (bearerError) {
-          console.debug("Auth - Bearer token authentication failed:", bearerError)
-        }
-      }
-    }
-
     // Fallback to cookie-based authentication (legacy)
-    const cookieHeader = request.headers.get('cookie') || ''
     console.debug("Auth - Trying cookie-based authentication as fallback")
     
     if (!cookieHeader) {
@@ -137,7 +138,6 @@ export async function getAuthContext(
     }
 
     // Use the server-side Supabase client with proper cookie handling
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     
     const { createServerClient } = await import('@supabase/ssr')
@@ -165,16 +165,7 @@ export async function getAuthContext(
 
     console.debug("Auth - User found via cookies:", user.email)
 
-    // Get user profile using service role
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    if (!supabaseServiceKey) {
-      console.error("Auth - SUPABASE_SERVICE_ROLE_KEY not configured")
-      return null
-    }
-
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { autoRefreshToken: false, persistSession: false }
-    })
+    // Get user profile using the already created supabaseAdmin client
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")

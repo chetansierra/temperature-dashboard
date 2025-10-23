@@ -20,27 +20,28 @@ export async function GET(
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    // Use appropriate supabase client based on auth method
-    let supabase
-    const authHeader = request.headers.get("authorization")
-    
-    if (authHeader?.startsWith("Bearer ")) {
-      // For Bearer token auth, use anon client with the token
-      supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          global: {
-            headers: {
-              Authorization: authHeader
-            }
-          }
+    // For admin operations, use service role client to bypass RLS
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!supabaseServiceKey) {
+      return NextResponse.json({
+        error: {
+          code: 'CONFIG_ERROR',
+          message: 'Service role key not configured',
+          requestId: crypto.randomUUID()
         }
-      )
-    } else {
-      // Use the standard server client for cookie-based auth
-      supabase = await createServerSupabaseClient()
+      }, { status: 500 })
     }
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      supabaseServiceKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
     
     const { id: siteId } = await params
 
@@ -170,7 +171,28 @@ export async function POST(
       }, { status: 400 })
     }
 
-    const supabase = await createServerSupabaseClient()
+    // For admin operations, use service role client to bypass RLS
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!supabaseServiceKey) {
+      return NextResponse.json({
+        error: {
+          code: 'CONFIG_ERROR',
+          message: 'Service role key not configured',
+          requestId: crypto.randomUUID()
+        }
+      }, { status: 500 })
+    }
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      supabaseServiceKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
 
     // Verify site exists and get its organization
     const { data: site, error: siteError } = await supabase

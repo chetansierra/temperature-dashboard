@@ -40,10 +40,32 @@ export default function NewUserPage({ params }: { params: { id: string } }) {
     try {
       setLoading(true)
       
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+        console.log('Adding Bearer token to create user page requests')
+      } else {
+        console.warn('No session or access token found for create user page requests')
+      }
+      
       // Fetch organization details and existing users
       const [orgResponse, usersResponse] = await Promise.all([
-        fetch(`/api/admin/organizations/${params.id}`),
-        fetch(`/api/admin/users?organization_id=${params.id}`)
+        fetch(`/api/admin/organizations/${params.id}`, {
+          headers,
+          credentials: 'include'
+        }),
+        fetch(`/api/admin/users?organization_id=${params.id}`, {
+          headers,
+          credentials: 'include'
+        })
       ])
       
       if (!orgResponse.ok) {
@@ -84,11 +106,26 @@ export default function NewUserPage({ params }: { params: { id: string } }) {
     setError(null)
 
     try {
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+        console.log('Adding Bearer token to create user request')
+      } else {
+        console.warn('No session or access token found for create user request')
+      }
+
       const response = await fetch('/api/admin/users', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers,
+        credentials: 'include',
         body: JSON.stringify({
           email: formData.email,
           password: formData.password,
@@ -249,7 +286,7 @@ export default function NewUserPage({ params }: { params: { id: string } }) {
               id="role"
               value={formData.role}
               onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOCIgdmlld0JveD0iMCAwIDEyIDgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xIDFMNiA2TDExIDEiIHN0cm9rZT0iIzZCNzI4MCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K')] bg-no-repeat bg-right-3 bg-center pr-10"
             >
               <option value="user">User (Read-only access)</option>
               <option value="master_user" disabled={hasMasterUser}>

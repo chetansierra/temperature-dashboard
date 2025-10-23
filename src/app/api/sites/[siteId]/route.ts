@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { SiteDetailResponseSchema } from '@/utils/schemas'
 import { getAuthContext, createAuthError, canAccessSite } from '@/utils/auth'
@@ -60,7 +61,7 @@ export async function GET(
       .select(`
         id,
         name,
-        environment_type,
+        type,
         description,
         created_at
       `)
@@ -123,7 +124,7 @@ export async function GET(
         return {
           id: env.id,
           name: env.name,
-          environment_type: env.environment_type,
+          environment_type: env.type,
           description: env.description,
           sensor_count: sensorCount || 0,
           active_alerts: activeAlertsCount || 0,
@@ -200,7 +201,7 @@ export async function GET(
     const transformedEnvironments = environments.map(env => ({
       id: env.id,
       name: env.name,
-      environment_type: env.environment_type,
+      environment_type: env.type,
       description: env.description,
       sensor_count: env.sensor_count,
       active_alerts: env.active_alerts,

@@ -75,8 +75,23 @@ export default function AdminEnvironmentsPage() {
     try {
       setLoading(true)
       
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+      
       // Fetch organizations for filter dropdown
-      const orgResponse = await fetch('/api/admin/organizations')
+      const orgResponse = await fetch('/api/admin/organizations', {
+        headers,
+        credentials: 'include'
+      })
       if (orgResponse.ok) {
         const orgData = await orgResponse.json()
         setOrganizations(orgData.organizations || [])
@@ -94,13 +109,28 @@ export default function AdminEnvironmentsPage() {
 
   const fetchEnvironments = async () => {
     try {
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+
       const params = new URLSearchParams()
       if (filters.organization) params.append('organization_id', filters.organization)
       if (filters.site) params.append('site_id', filters.site)
       if (filters.type) params.append('type', filters.type)
       if (filters.status) params.append('status', filters.status)
 
-      const response = await fetch(`/api/admin/environments?${params.toString()}`)
+      const response = await fetch(`/api/admin/environments?${params.toString()}`, {
+        headers,
+        credentials: 'include'
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch environments')
@@ -118,7 +148,22 @@ export default function AdminEnvironmentsPage() {
 
   const fetchSitesForOrganization = async (organizationId: string) => {
     try {
-      const response = await fetch(`/api/admin/sites?organization_id=${organizationId}`)
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+
+      const response = await fetch(`/api/admin/sites?organization_id=${organizationId}`, {
+        headers,
+        credentials: 'include'
+      })
       if (response.ok) {
         const data = await response.json()
         setSites(data.sites || [])
@@ -468,7 +513,7 @@ export default function AdminEnvironmentsPage() {
               
               <div className="divide-y divide-gray-200">
                 {orgEnvironments.map((environment) => (
-                  <div key={environment.id} className="p-6 hover:bg-gray-50">
+                  <div key={environment.id} className="p-6 hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => window.location.href = `/admin/environments/${environment.id}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center space-x-3">
@@ -516,17 +561,29 @@ export default function AdminEnvironmentsPage() {
                       
                       <div className="ml-6 flex items-center space-x-3">
                         <Link
+                          href={`/admin/environments/${environment.id}`}
+                          className="text-green-600 hover:text-green-800 text-sm font-medium"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          View Details
+                        </Link>
+                        <Link
                           href={`/admin/environments/${environment.id}/edit`}
                           className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           Edit
                         </Link>
                         <Link
                           href={`/admin/view-as/${environment.site?.tenant?.id}`}
                           className="text-gray-600 hover:text-gray-800 text-sm font-medium"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           View Organization
                         </Link>
+                        <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
                       </div>
                     </div>
                   </div>

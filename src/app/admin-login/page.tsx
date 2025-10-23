@@ -42,33 +42,65 @@ export default function AdminLoginPage() {
     setError("");
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log("Admin login attempt for:", loginForm.email);
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: loginForm.email,
         password: loginForm.password,
       });
 
       if (error) {
+        console.error("Login error:", error);
         setError("Invalid admin credentials");
         return;
       }
 
+      console.log("Login successful, checking session...");
+      
+      // Wait a moment for session to be established
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Get fresh session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error("Session error:", sessionError);
+        setError("Failed to establish session");
+        return;
+      }
+      
+      console.log("Session established, access token length:", session.access_token?.length);
+
       // Check if user is an admin
-      const { data: userProfile } = await supabase
+      const { data: userProfile, error: profileError } = await supabase
         .from("profiles")
         .select("role")
-        .eq("id", (await supabase.auth.getUser()).data.user?.id)
+        .eq("id", session.user.id)
         .single();
 
+      if (profileError) {
+        console.error("Profile fetch error:", profileError);
+        setError("Failed to fetch user profile");
+        return;
+      }
+
       if (userProfile?.role !== "admin") {
+        console.log("User is not admin, role:", userProfile?.role);
         await supabase.auth.signOut();
         setError("Access denied. Admin privileges required.");
         return;
       }
 
+      console.log("Admin login successful, redirecting...");
       setToast({ message: "Admin login successful", type: "success" });
-      // Redirect to admin dashboard instead of tenant selection
-      router.push('/admin/dashboard');
+      
+      // Small delay to ensure session is fully established
+      setTimeout(() => {
+        router.push('/admin/dashboard');
+      }, 100);
+      
     } catch (error) {
+      console.error("Login exception:", error);
       setError("Login failed. Please try again.");
     } finally {
       setIsLoggingIn(false);

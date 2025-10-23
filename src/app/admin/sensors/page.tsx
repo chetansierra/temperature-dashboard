@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import CreateSensorForm from '@/components/admin/CreateSensorForm'
+import AddSensorModal from '@/components/admin/AddSensorModal'
 import BulkSensorImport from '@/components/admin/BulkSensorImport'
 
 interface Sensor {
   id: string
   name: string
-  type: string
+  local_id: string | null
+  model: string | null
   status: string
   battery_level: number | null
+  is_active: boolean | null
   alert_count: number
   last_temperature: number | null
   last_humidity: number | null
@@ -59,7 +61,7 @@ export default function AdminSensorsPage() {
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
   const [showBulkImport, setShowBulkImport] = useState(false)
   const [filters, setFilters] = useState({
     organization: '',
@@ -206,33 +208,13 @@ export default function AdminSensorsPage() {
     }
   }
 
-  const getSensorTypeIcon = (type: string) => {
-    switch (type) {
-      case 'temperature':
-        return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-        )
-      case 'humidity':
-        return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-          </svg>
-        )
-      case 'temperature_humidity':
-        return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        )
-      default:
-        return (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-        )
-    }
+  const getSensorIcon = () => {
+    // Generic sensor icon since we don't have type field
+    return (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    )
   }
 
   const getBatteryColor = (level: number | null) => {
@@ -314,10 +296,10 @@ export default function AdminSensorsPage() {
               Bulk Import
             </button>
             <button
-              onClick={() => setShowCreateForm(true)}
+              onClick={() => setShowAddModal(true)}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
             >
-              Create Sensor
+              Add Sensor
             </button>
           </div>
         </div>
@@ -544,10 +526,10 @@ export default function AdminSensorsPage() {
               Clear Filters
             </button>
             <button
-              onClick={() => setShowCreateForm(true)}
+              onClick={() => setShowAddModal(true)}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
             >
-              Create Sensor
+              Add Sensor
             </button>
           </div>
         </div>
@@ -569,12 +551,19 @@ export default function AdminSensorsPage() {
                       <div className="flex-1">
                         <div className="flex items-center space-x-3">
                           <div className="text-gray-400">
-                            {getSensorTypeIcon(sensor.type)}
+                            {getSensorIcon()}
                           </div>
-                          <h4 className="text-lg font-medium text-gray-900">{sensor.name}</h4>
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-800">
-                            {sensor.type.replace('_', ' ')}
-                          </span>
+                          <Link 
+                            href={`/admin/sensors/${sensor.id}`}
+                            className="text-lg font-medium text-gray-900 hover:text-blue-600 transition-colors"
+                          >
+                            {sensor.name}
+                          </Link>
+                          {sensor.model && (
+                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-800">
+                              {sensor.model}
+                            </span>
+                          )}
                           <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                             sensor.status === 'active' ? 'bg-green-100 text-green-800' :
                             sensor.status === 'inactive' ? 'bg-red-100 text-red-800' :
@@ -592,6 +581,12 @@ export default function AdminSensorsPage() {
                           )}
                         </div>
                         <div className="mt-2 flex items-center space-x-4 text-sm text-gray-600">
+                          {sensor.local_id && (
+                            <>
+                              <span>ID: {sensor.local_id}</span>
+                              <span>•</span>
+                            </>
+                          )}
                           <span>{sensor.environment?.site?.name} - {sensor.environment?.site?.location}</span>
                           <span>•</span>
                           <span>{sensor.environment?.name} ({sensor.environment?.type})</span>
@@ -617,8 +612,14 @@ export default function AdminSensorsPage() {
                       
                       <div className="ml-6 flex items-center space-x-3">
                         <Link
-                          href={`/admin/sensors/${sensor.id}/edit`}
+                          href={`/admin/sensors/${sensor.id}`}
                           className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                        >
+                          View Details
+                        </Link>
+                        <Link
+                          href={`/admin/sensors/${sensor.id}/edit`}
+                          className="text-gray-600 hover:text-gray-800 text-sm font-medium"
                         >
                           Edit
                         </Link>
@@ -638,15 +639,16 @@ export default function AdminSensorsPage() {
         </div>
       )}
 
-      {/* Create Sensor Form */}
-      {showCreateForm && (
-        <CreateSensorForm
-          onClose={() => setShowCreateForm(false)}
-          onSuccess={() => {
-            fetchData()
-          }}
-        />
-      )}
+      {/* Add Sensor Modal */}
+      <AddSensorModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSuccess={() => {
+          fetchData()
+        }}
+        preselectedSite={filters.site}
+        preselectedEnvironment={filters.environment}
+      />
 
       {/* Bulk Import Form */}
       {showBulkImport && (

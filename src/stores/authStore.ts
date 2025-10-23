@@ -46,6 +46,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       if (session?.user) {
+        // Check if session is expired
+        const now = Math.floor(Date.now() / 1000)
+        const expiresAt = session.expires_at || 0
+        
+        if (expiresAt < now) {
+          console.log('Session expired during initialization, attempting refresh...')
+          
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+          
+          if (refreshError || !refreshData.session) {
+            console.error('Session refresh failed during initialization:', refreshError)
+            set({
+              user: null,
+              profile: null,
+              isLoading: false,
+              isInitialized: true
+            })
+            return
+          }
+          
+          // Use the refreshed session
+          session = refreshData.session
+        }
+
         // Get user profile
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
@@ -101,6 +125,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         } else if (event === 'TOKEN_REFRESHED' && session) {
           // Session refreshed - maintain current state but log it
           console.log('Token refreshed for user:', session.user?.id)
+          
+          // Update the user in state to ensure we have the latest session
+          const { profile } = get()
+          if (profile) {
+            set({ user: session.user, profile, isLoading: false })
+          }
         }
       })
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getAuthContext, createAuthError } from '@/utils/auth'
 
@@ -18,7 +19,26 @@ export async function GET(
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    const supabase = await createServerSupabaseClient()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      supabase = await createServerSupabaseClient()
+    }
+
     const { id: siteId } = await params
 
     // Get site details
@@ -92,7 +112,25 @@ export async function PUT(
     const { name, location, description, status } = body
     const { id: siteId } = await params
 
-    const supabase = await createServerSupabaseClient()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      supabase = await createServerSupabaseClient()
+    }
 
     // Check if site exists
     const { data: existingSite } = await supabase
@@ -195,7 +233,26 @@ export async function DELETE(
     }
 
     const { id: siteId } = await params
-    const supabase = await createServerSupabaseClient()
+    
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      supabase = await createServerSupabaseClient()
+    }
 
     // Check if site exists and get details for logging
     const { data: site } = await supabase

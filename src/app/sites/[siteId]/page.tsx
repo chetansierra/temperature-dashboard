@@ -18,10 +18,7 @@ import {
   X
 } from 'lucide-react'
 
-// Fetcher function for SWR
-const fetcher = (url: string) => fetch(url, {
-  credentials: 'include'
-}).then((res) => res.json())
+import { fetcher } from '@/utils/fetchers'
 
 interface Environment {
   id: string

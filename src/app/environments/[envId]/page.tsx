@@ -19,24 +19,7 @@ import {
   Activity
 } from 'lucide-react'
 
-// Fetcher function for SWR with Bearer token
-const fetcher = async (url: string) => {
-  const { supabase } = await import('@/lib/supabase')
-  const { data: { session } } = await supabase.auth.getSession()
-  
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  }
-  
-  if (session?.access_token) {
-    headers.Authorization = `Bearer ${session.access_token}`
-  }
-
-  return fetch(url, {
-    headers,
-    credentials: 'include'
-  }).then((res) => res.json())
-}
+import { fetcher } from '@/utils/fetchers'
 
 interface Sensor {
   id: string

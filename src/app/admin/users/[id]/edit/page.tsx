@@ -40,6 +40,9 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
   const [error, setError] = useState<string | null>(null)
   const [showRoleConfirmation, setShowRoleConfirmation] = useState(false)
   const [pendingRole, setPendingRole] = useState<string | null>(null)
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     fetchUser()
@@ -48,7 +51,24 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
   const fetchUser = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/admin/users/${params.id}`)
+      
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+      }
+      
+      const response = await fetch(`/api/admin/users/${params.id}`, {
+        headers,
+        credentials: 'include'
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch user')
@@ -105,6 +125,69 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
     setPendingRole(null)
   }
 
+  const handleDeleteUser = async () => {
+    if (!user) return
+    
+    const expectedText = `delete ${user.email} user`
+    if (deleteConfirmationText.toLowerCase() !== expectedText.toLowerCase()) {
+      setError(`Please type exactly: "${expectedText}"`)
+      return
+    }
+
+    setDeleting(true)
+    setError(null)
+
+    try {
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+      }
+
+      const response = await fetch(`/api/admin/users/${params.id}`, {
+        method: 'DELETE',
+        headers,
+        credentials: 'include'
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error?.message || 'Failed to delete user')
+      }
+
+      // Redirect back to organization users page
+      if (user?.tenant?.id) {
+        router.push(`/admin/organizations/${user.tenant.id}/users`)
+      } else {
+        router.push('/admin/organizations')
+      }
+    } catch (err) {
+      console.error('Error deleting user:', err)
+      setError(err instanceof Error ? err.message : 'Failed to delete user')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const openDeleteConfirmation = () => {
+    setShowDeleteConfirmation(true)
+    setDeleteConfirmationText('')
+    setError(null)
+  }
+
+  const closeDeleteConfirmation = () => {
+    setShowDeleteConfirmation(false)
+    setDeleteConfirmationText('')
+    setError(null)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
@@ -122,11 +205,23 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
         updateData.password = formData.password
       }
 
+      // Get the current session to include in the request
+      const { supabase } = await import('@/lib/supabase')
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      
+      // Add authorization header if we have a session
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+      }
+
       const response = await fetch(`/api/admin/users/${params.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers,
+        credentials: 'include',
         body: JSON.stringify(updateData)
       })
 
@@ -296,7 +391,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
               id="role"
               value={formData.role}
               onChange={(e) => handleRoleChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOCIgdmlld0JveD0iMCAwIDEyIDgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xIDFMNiA2TDExIDEiIHN0cm9rZT0iIzZCNzI4MCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K')] bg-no-repeat bg-right-3 bg-center pr-10"
             >
               <option value="user">User (Read-only access)</option>
               <option value="master_user">Master User (Organization admin)</option>
@@ -314,7 +409,7 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
               id="status"
               value={formData.status}
               onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOCIgdmlld0JveD0iMCAwIDEyIDgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xIDFMNiA2TDExIDEiIHN0cm9rZT0iIzZCNzI4MCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K')] bg-no-repeat bg-right-3 bg-center pr-10"
             >
               <option value="active">Active</option>
               <option value="suspended">Suspended</option>
@@ -361,23 +456,93 @@ export default function EditUserPage({ params }: { params: { id: string } }) {
             </ul>
           </div>
 
-          <div className="flex items-center justify-end space-x-4 pt-6 border-t border-gray-200">
-            <Link
-              href={user?.tenant?.id ? `/admin/organizations/${user.tenant.id}/users` : '/admin/organizations'}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              Cancel
-            </Link>
+          <div className="flex items-center justify-between pt-6 border-t border-gray-200">
             <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={openDeleteConfirmation}
+              disabled={saving || deleting}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {saving ? 'Saving...' : 'Save Changes'}
+              {deleting ? 'Deleting...' : 'Delete User Permanently'}
             </button>
+            
+            <div className="flex items-center space-x-4">
+              <Link
+                href={user?.tenant?.id ? `/admin/organizations/${user.tenant.id}/users` : '/admin/organizations'}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Cancel
+              </Link>
+              <button
+                type="submit"
+                disabled={saving || deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
+
+      {/* Delete User Confirmation Modal */}
+      {showDeleteConfirmation && user && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mt-4 text-center">
+                Delete User Permanently
+              </h3>
+              <div className="mt-4 px-4">
+                <p className="text-sm text-gray-500 mb-4">
+                  This action will permanently delete the user <strong>{user.email}</strong> and cannot be undone. 
+                  All user data, access permissions, and account information will be permanently removed.
+                </p>
+                <p className="text-sm text-gray-700 font-medium mb-2">
+                  To confirm deletion, please type:
+                </p>
+                <p className="text-sm font-mono bg-gray-100 p-2 rounded border mb-3">
+                  delete {user.email} user
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmationText}
+                  onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                  placeholder="Type the confirmation text here"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
+                  disabled={deleting}
+                />
+                {error && (
+                  <p className="text-sm text-red-600 mt-2">{error}</p>
+                )}
+              </div>
+              <div className="items-center px-4 py-3 mt-4">
+                <div className="flex space-x-3">
+                  <button
+                    onClick={closeDeleteConfirmation}
+                    disabled={deleting}
+                    className="px-4 py-2 bg-gray-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteUser}
+                    disabled={deleting || deleteConfirmationText.toLowerCase() !== `delete ${user.email} user`.toLowerCase()}
+                    className="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {deleting ? 'Deleting...' : 'Delete Permanently'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Role Change Confirmation Modal */}
       {showRoleConfirmation && (

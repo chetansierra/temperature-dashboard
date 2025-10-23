@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createClient } from '@supabase/supabase-js'
+import { createServerSupabaseClient, supabaseAdmin } from '@/lib/supabase-server'
 import { getAuthContext, createAuthError } from '@/utils/auth'
 
 interface BulkSensorData {
   name: string
-  type: string
+  local_id?: string
+  model?: string
   environment_id: string
   status?: string
   battery_level?: number
+  is_active?: boolean
 }
 
 export async function POST(request: NextRequest) {
@@ -36,8 +39,28 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const supabase = await createServerSupabaseClient()
-    const validTypes = ['temperature', 'humidity', 'temperature_humidity', 'pressure', 'air_quality', 'motion', 'other']
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
+
     const results = {
       created: [] as any[],
       errors: [] as any[]
@@ -49,36 +72,22 @@ export async function POST(request: NextRequest) {
       
       try {
         // Validate required fields
-        if (!sensorData.name || !sensorData.type || !sensorData.environment_id) {
+        if (!sensorData.name || !sensorData.environment_id) {
           results.errors.push({
             row: i + 1,
             data: sensorData,
-            error: 'Name, type, and environment_id are required'
-          })
-          continue
-        }
-
-        // Validate sensor type
-        if (!validTypes.includes(sensorData.type)) {
-          results.errors.push({
-            row: i + 1,
-            data: sensorData,
-            error: `Invalid sensor type. Must be one of: ${validTypes.join(', ')}`
+            error: 'Name and environment_id are required'
           })
           continue
         }
 
         // Check if environment exists
-        const { data: environment } = await supabase
+        const { data: environment } = await supabaseAdmin
           .from('environments')
           .select(`
             id, 
-            name, 
-            site:sites(
-              id, 
-              name, 
-              tenant:tenants!sites_tenant_id_fkey(name)
-            )
+            name,
+            site_id
           `)
           .eq('id', sensorData.environment_id)
           .single()
@@ -92,22 +101,52 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // Create sensor
-        const { data: sensor, error: createError } = await supabase
+        // Get site and tenant info
+        const { data: site } = await supabaseAdmin
+          .from('sites')
+          .select(`
+            id,
+            name,
+            tenant_id,
+            tenants!sites_tenant_id_fkey(
+              id,
+              name
+            )
+          `)
+          .eq('id', environment.site_id)
+          .single()
+
+        if (!site) {
+          results.errors.push({
+            row: i + 1,
+            data: sensorData,
+            error: `Site not found for environment ${sensorData.environment_id}`
+          })
+          continue
+        }
+
+        // Create sensor using admin client to bypass RLS
+        const { data: sensor, error: createError } = await supabaseAdmin
           .from('sensors')
           .insert({
             name: sensorData.name,
-            type: sensorData.type,
+            local_id: sensorData.local_id || null,
+            model: sensorData.model || null,
             environment_id: sensorData.environment_id,
+            site_id: environment.site_id,
+            tenant_id: site?.tenant_id,
             status: sensorData.status || 'active',
-            battery_level: sensorData.battery_level || 100
+            battery_level: sensorData.battery_level || 100,
+            is_active: sensorData.is_active !== false
           })
           .select(`
             id,
             name,
-            type,
+            local_id,
+            model,
             status,
             battery_level,
+            is_active,
             created_at,
             environment:environments(
               id,
@@ -139,7 +178,7 @@ export async function POST(request: NextRequest) {
         results.created.push(sensor)
 
         // Log admin activity for each created sensor
-        await supabase
+        await supabaseAdmin
           .from('admin_activity')
           .insert({
             admin_id: authContext.profile.id,
@@ -148,10 +187,11 @@ export async function POST(request: NextRequest) {
             resource_id: sensor.id,
             resource_name: sensor.name,
             details: { 
-              type: sensor.type,
+              model: sensor.model,
+              local_id: sensor.local_id,
               environment: environment.name,
-              site: environment.site?.name,
-              organization: environment.site?.tenant?.name,
+              site: site?.name,
+              organization: site?.tenants?.[0]?.name,
               bulk_import: true,
               environment_id: sensorData.environment_id
             }

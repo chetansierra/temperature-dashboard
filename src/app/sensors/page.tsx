@@ -7,10 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { AllRoles } from '@/components/auth/RoleGuard'
 
-// Fetcher function for SWR
-const fetcher = (url: string) => fetch(url, {
-  credentials: 'include'
-}).then((res) => res.json())
+import { fetcher } from '@/utils/fetchers'
 
 interface Sensor {
   id: string

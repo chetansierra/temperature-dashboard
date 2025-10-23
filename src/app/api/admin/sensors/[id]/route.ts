@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { supabaseAdmin } from '@/lib/supabase-server'
 import { getAuthContext, createAuthError } from '@/utils/auth'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authContext = await getAuthContext(request)
@@ -18,8 +18,11 @@ export async function GET(
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    const supabase = await createServerSupabaseClient()
-    const sensorId = params.id
+    // Use admin client for sensor queries (bypasses RLS)
+    const supabase = supabaseAdmin
+    
+    const { id } = await params
+    const sensorId = id
 
     // Get sensor details
     const { data: sensor, error } = await supabase
@@ -27,27 +30,17 @@ export async function GET(
       .select(`
         id,
         name,
-        type,
+        local_id,
+        model,
         status,
         battery_level,
+        is_active,
         last_reading_at,
         created_at,
         updated_at,
-        environment:environments(
-          id,
-          name,
-          type,
-          site:sites(
-            id,
-            name,
-            location,
-            tenant:tenants(
-              id,
-              name,
-              slug
-            )
-          )
-        )
+        environment_id,
+        site_id,
+        tenant_id
       `)
       .eq('id', sensorId)
       .single()
@@ -73,7 +66,53 @@ export async function GET(
       }, { status: 500 })
     }
 
-    return NextResponse.json({ sensor })
+    // Get related data
+    let environment = null
+    let site = null
+    let tenant = null
+
+    if (sensor.environment_id) {
+      const { data: envData } = await supabase
+        .from('environments')
+        .select('id, name, type')
+        .eq('id', sensor.environment_id)
+        .single()
+      environment = envData
+    }
+
+    if (sensor.site_id) {
+      const { data: siteData } = await supabase
+        .from('sites')
+        .select('id, name, location')
+        .eq('id', sensor.site_id)
+        .single()
+      site = siteData
+    }
+
+    if (sensor.tenant_id) {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('id, name, slug')
+        .eq('id', sensor.tenant_id)
+        .single()
+      tenant = tenantData
+    }
+
+    // Construct the response with nested structure
+    const sensorWithRelations = {
+      ...sensor,
+      environment: environment ? {
+        ...environment,
+        site: site ? {
+          ...site,
+          tenant: tenant
+        } : null
+      } : null
+    }
+
+    return NextResponse.json({ sensor: sensorWithRelations })
+
+
 
   } catch (error) {
     console.error('Admin sensor detail API error:', error)
@@ -89,7 +128,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authContext = await getAuthContext(request)
@@ -105,9 +144,11 @@ export async function PUT(
 
     const body = await request.json()
     const { name, type, status, battery_level } = body
-    const sensorId = params.id
+    const { id } = await params
+    const sensorId = id
 
-    const supabase = await createServerSupabaseClient()
+    // Use admin client for sensor operations (bypasses RLS)
+    const supabase = supabaseAdmin
 
     // Check if sensor exists
     const { data: existingSensor } = await supabase
@@ -115,14 +156,8 @@ export async function PUT(
       .select(`
         id, 
         name, 
-        type, 
-        environment:environments(
-          name, 
-          site:sites(
-            name, 
-            tenant:tenants!sites_tenant_id_fkey(name)
-          )
-        )
+        model,
+        status
       `)
       .eq('id', sensorId)
       .single()
@@ -187,27 +222,17 @@ export async function PUT(
       .select(`
         id,
         name,
-        type,
+        local_id,
+        model,
         status,
         battery_level,
+        is_active,
         last_reading_at,
         created_at,
         updated_at,
-        environment:environments(
-          id,
-          name,
-          type,
-          site:sites(
-            id,
-            name,
-            location,
-            tenant:tenants(
-              id,
-              name,
-              slug
-            )
-          )
-        )
+        environment_id,
+        site_id,
+        tenant_id
       `)
       .single()
 
@@ -225,7 +250,7 @@ export async function PUT(
     // Log admin activity
     const activityDetails: any = { updated_fields: Object.keys(updateData) }
     if (name !== existingSensor.name) activityDetails.old_name = existingSensor.name
-    if (type !== existingSensor.type) activityDetails.old_type = existingSensor.type
+    if (status !== existingSensor.status) activityDetails.old_status = existingSensor.status
 
     await supabase
       .from('admin_activity')
@@ -257,7 +282,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authContext = await getAuthContext(request)
@@ -271,8 +296,11 @@ export async function DELETE(
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    const sensorId = params.id
-    const supabase = await createServerSupabaseClient()
+    const { id } = await params
+    const sensorId = id
+    
+    // Use admin client for sensor operations (bypasses RLS)
+    const supabase = supabaseAdmin
 
     // Check if sensor exists and get details for logging
     const { data: sensor } = await supabase
@@ -280,17 +308,56 @@ export async function DELETE(
       .select(`
         id, 
         name, 
-        type, 
-        environment:environments(
-          name, 
-          site:sites(
-            name, 
-            tenant:tenants!sites_tenant_id_fkey(name)
-          )
-        )
+        model,
+        environment_id
       `)
       .eq('id', sensorId)
       .single()
+
+    if (!sensor) {
+      return NextResponse.json({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Sensor not found',
+          requestId: crypto.randomUUID()
+        }
+      }, { status: 404 })
+    }
+
+    // Get environment details for logging
+    const { data: environment } = await supabase
+      .from('environments')
+      .select(`
+        name,
+        site_id
+      `)
+      .eq('id', sensor.environment_id)
+      .single()
+
+    let site = null
+    let tenant = null
+    if (environment?.site_id) {
+      const { data: siteData } = await supabase
+        .from('sites')
+        .select(`
+          name,
+          tenant_id
+        `)
+        .eq('id', environment.site_id)
+        .single()
+      
+      site = siteData
+      
+      if (siteData?.tenant_id) {
+        const { data: tenantData } = await supabase
+          .from('tenants')
+          .select('name')
+          .eq('id', siteData.tenant_id)
+          .single()
+        
+        tenant = tenantData
+      }
+    }
 
     if (!sensor) {
       return NextResponse.json({
@@ -329,10 +396,10 @@ export async function DELETE(
         resource_id: sensorId,
         resource_name: sensor.name,
         details: { 
-          type: sensor.type,
-          environment: sensor.environment?.name,
-          site: sensor.environment?.site?.name,
-          organization: sensor.environment?.site?.tenant?.name
+          model: sensor.model,
+          environment: environment?.name,
+          site: site?.name,
+          organization: tenant?.name
         }
       })
 

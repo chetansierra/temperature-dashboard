@@ -50,7 +50,7 @@ export async function GET(
         created_at,
         environments (
           name,
-          environment_type
+          type
         ),
         sites (
           site_name,

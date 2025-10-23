@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createClient } from '@supabase/supabase-js'
+import { createServerSupabaseClient, supabaseAdmin } from '@/lib/supabase-server'
 import { getAuthContext, createAuthError } from '@/utils/auth'
 
 export async function GET(request: NextRequest) {
@@ -15,7 +16,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(createAuthError('Admin access required'), { status: 403 })
     }
 
-    const supabase = await createServerSupabaseClient()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        }
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
+    }
+
     const url = new URL(request.url)
     const organizationId = url.searchParams.get('organization_id')
     const siteId = url.searchParams.get('site_id')
@@ -27,9 +49,11 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         name,
-        type,
+        local_id,
+        model,
         status,
         battery_level,
+        is_active,
         last_reading_at,
         created_at,
         updated_at,
@@ -161,44 +185,56 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, type, environment_id, status = 'active', battery_level = 100 } = body
+    const { 
+      name, 
+      local_id, 
+      model, 
+      environment_id, 
+      status = 'active', 
+      battery_level = 100,
+      is_active = true 
+    } = body
 
     // Validate input
-    if (!name || !type || !environment_id) {
+    if (!name || !environment_id) {
       return NextResponse.json({
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Name, type, and environment_id are required',
+          message: 'Name and environment_id are required',
           requestId: crypto.randomUUID()
         }
       }, { status: 400 })
     }
 
-    // Validate sensor type
-    const validTypes = ['temperature', 'humidity', 'temperature_humidity', 'pressure', 'air_quality', 'motion', 'other']
-    if (!validTypes.includes(type)) {
-      return NextResponse.json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: `Type must be one of: ${validTypes.join(', ')}`,
-          requestId: crypto.randomUUID()
+    // Use appropriate supabase client based on auth method
+    let supabase
+    const authHeader = request.headers.get("authorization")
+    
+    if (authHeader?.startsWith("Bearer ")) {
+      // For Bearer token auth, use anon client with the token
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: authHeader
+            }
+          }
         }
-      }, { status: 400 })
+      )
+    } else {
+      // Use the standard server client for cookie-based auth
+      supabase = await createServerSupabaseClient()
     }
 
-    const supabase = await createServerSupabaseClient()
-
-    // Check if environment exists
-    const { data: environment } = await supabase
+    // Check if environment exists and get tenant info
+    const { data: environment } = await supabaseAdmin
       .from('environments')
       .select(`
         id, 
-        name, 
-        site:sites(
-          id, 
-          name, 
-          tenant:tenants!sites_tenant_id_fkey(name)
-        )
+        name,
+        site_id
       `)
       .eq('id', environment_id)
       .single()
@@ -213,22 +249,55 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
+    // Get site and tenant info
+    const { data: site } = await supabaseAdmin
+      .from('sites')
+      .select(`
+        id,
+        name,
+        tenant_id,
+        tenants!sites_tenant_id_fkey(
+          id,
+          name
+        )
+      `)
+      .eq('id', environment.site_id)
+      .single()
+
+    if (!environment) {
+      return NextResponse.json({
+        error: {
+          code: 'ENVIRONMENT_NOT_FOUND',
+          message: 'Environment not found',
+          requestId: crypto.randomUUID()
+        }
+      }, { status: 404 })
+    }
+
+    // Use service role client for sensor creation to bypass RLS
+    
     // Create sensor
-    const { data: sensor, error: createError } = await supabase
+    const { data: sensor, error: createError } = await supabaseAdmin
       .from('sensors')
       .insert({
         name,
-        type,
+        local_id: local_id || null,
+        model: model || null,
         environment_id,
+        site_id: environment.site_id,
+        tenant_id: site?.tenant_id,
         status,
-        battery_level
+        battery_level,
+        is_active
       })
       .select(`
         id,
         name,
-        type,
+        local_id,
+        model,
         status,
         battery_level,
+        is_active,
         created_at,
         environment:environments(
           id,
@@ -260,7 +329,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log admin activity
-    await supabase
+    await supabaseAdmin
       .from('admin_activity')
       .insert({
         admin_id: authContext.profile.id,
@@ -269,10 +338,11 @@ export async function POST(request: NextRequest) {
         resource_id: sensor.id,
         resource_name: sensor.name,
         details: { 
-          type: sensor.type,
+          model: sensor.model,
+          local_id: sensor.local_id,
           environment: environment.name,
-          site: environment.site?.name,
-          organization: environment.site?.tenant?.name,
+          site: site?.name,
+          organization: site?.tenants?.[0]?.name,
           environment_id: environment_id
         }
       })

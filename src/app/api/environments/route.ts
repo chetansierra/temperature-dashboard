@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       .from('environments')
       .select(`
         id,
-        environment_type,
+        type,
         name,
         description,
         created_at,
@@ -160,7 +160,7 @@ export async function GET(request: NextRequest) {
         return {
           id: env.id,
           name: env.name,
-          environment_type: env.environment_type,
+          environment_type: env.type,
           description: env.description,
           site_name: site?.name || 'Unknown Site',
           site_id: env.site_id,
@@ -270,7 +270,7 @@ export async function POST(request: NextRequest) {
     const environmentData = {
       site_id: validatedData.site_id,
       tenant_id: profile.tenant_id!,
-      environment_type: validatedData.environment_type,
+      type: validatedData.environment_type,
       name: validatedData.name,
       description: validatedData.description || null
     }
@@ -281,12 +281,12 @@ export async function POST(request: NextRequest) {
       .select(`
         id,
         site_id,
-        environment_type,
+        type,
         name,
         description,
         created_at,
         sites (
-          site_name,
+          name,
           site_code
         )
       `)
@@ -309,7 +309,7 @@ export async function POST(request: NextRequest) {
       environment: {
         id: environment.id,
         site_id: environment.site_id,
-        environment_type: environment.environment_type,
+        environment_type: environment.type,
         name: environment.name,
         description: environment.description,
         created_at: environment.created_at,
